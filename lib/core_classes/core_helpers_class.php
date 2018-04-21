@@ -5,7 +5,7 @@
 
 // Keep this class independent from others, so that it may be used outside of the main Doorkeeper code
 // Methods in this class are "helpers" to solve common coding problems
-class http_client
+class core_helpers
 {
 
     public function core_default_arguments($arguments_arr, $default_argument_values_arr)
