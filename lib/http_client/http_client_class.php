@@ -27,7 +27,7 @@ class http_client
             'request_type' => 'GET',
             'postdata' => 'false'
         );
-        $arguments_arr = $this->helpers->core_default_arguments($arguments_arr, $default_argument_values_arr);
+        $arguments_arr = $this->helpers->default_arguments($arguments_arr, $default_argument_values_arr);
         // Arguments recently replaced:
         // $request_url, $handle_cookies=false, $request_type='GET', $postdata=false
         // Make sure you update to the new array-format

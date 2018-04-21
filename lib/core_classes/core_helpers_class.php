@@ -8,11 +8,15 @@
 class core_helpers
 {
 
-    public function core_default_arguments($arguments_arr, $default_argument_values_arr)
+    public function default_arguments($arguments_arr, $default_argument_values_arr)
     {
         // Method to define default arguments using
         // an associative array instead of traditional function arguments.
         // This is needed so arguments may be entered in any order the developer wants!
+        
+        // "$default_argument_values_arr"  is filled out by the developer on a per-function basis
+        // "$arguments_arr"  contains the provided arguments which are checked against  "$default_argument_values_arr"
+        
         foreach ($default_argument_values_arr as $key => $value) { // Set default values
             if (isset($arguments_arr["{$key}"]) == false) {
                 if ($default_argument_values_arr["{$key}"] !== 'REQUIRED') {
