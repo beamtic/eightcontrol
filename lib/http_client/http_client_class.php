@@ -15,7 +15,7 @@ class http_client
     protected $host;
 
 
-    public function __construct($dk) {
+    public function __construct() {
         $this->helpers = new core_helpers(); // Site settings object
     }
     public function httpRequest($arguments_arr)
