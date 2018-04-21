@@ -16,7 +16,7 @@ class http_client
 
 
     public function __construct() {
-        $this->helpers = new core_helpers(); // Site settings object
+        $this->helpers = new core_helpers(); // Helper methods
     }
     public function httpRequest($arguments_arr)
     {
