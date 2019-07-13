@@ -31,7 +31,7 @@ class file_handler {
 	if (is_writable($file_or_dir)) { // Check for write permissions
 	  if (is_dir($file_or_dir)) { // Do this if we are dealing with a directory
 		$objects = scandir($file_or_dir); // Handle subdirectories (if any)
-		$objects = array_diff(scandir('.'), array('..', '.')); // Removes "." and ".." from the array, since they are not needed.
+		$objects = array_diff($objects, array('..', '.')); // Removes "." and ".." from the array, since they are not needed.
 		foreach ($objects as $object) {
 			if (is_dir($file_or_dir.'/'.$object)) {
 			  simple_delete($file_or_dir.'/'.$object); // If dealing with a subdirectory, perform another simple_delete()
@@ -46,7 +46,9 @@ class file_handler {
 			  }
 			}
 		}
-		rmdir($file_or_dir); // Delete directory
+		if(!rmdir($file_or_dir)) {
+		  return $this->handle_error(array('action'=>'rmdir', 'path' => $file_or_dir.'/'.$object));
+		} // Delete directory
 		return true; // Return true on success
 	  } else {
 		if(!unlink($file_or_dir)) {
@@ -76,8 +78,7 @@ class file_handler {
 	   'max_line_length' => $this->f_args['max_line_length'],
 	   'lines_to_read' => $this->f_args['lines_to_read']
    );
-
-   if ($fp = @fopen($this->f_args['path'], "r")) {
+   if ($fp = fopen($this->f_args['path'], "r")) {
     $this->obtain_lock($fp); // Attempt to obtain file lock, error if the timeout is reached before obtaining the lock
    	if ($this->f_args['lines_to_read'] === false) { // Reads entire file until End Of File has been reached
    	  $lc = 1;
@@ -216,7 +217,9 @@ class file_handler {
 		'path' => ''
     );
     $arg = $this->helpers->default_arguments($arguments_arr, $default_argument_values_arr);
- 	
+	
+	$aed_html_table = '';
+	
  	if (count($this->additional_error_data) >= 1) { // Has to count, since we may have strings as keys.
  	  foreach ($this->additional_error_data as $key => $value) {
  	    $aed_html_table .= '<tr><td>'.$key.'</td><td>'.$value.'</td></tr>';
@@ -283,6 +286,13 @@ class file_handler {
 		case "file_exists":
 		$error_arr = array(
 		  'error' => '9', // 9 = File or directory already exists
+		  'path' => $arg['path'],
+		  'aed' => $aed_html_table
+		);
+		break;
+		case "rmdir":
+		$error_arr = array(
+		  'error' => '10', // 10 = Unable to remove directory
 		  'path' => $arg['path'],
 		  'aed' => $aed_html_table
 		);
