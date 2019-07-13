@@ -6,9 +6,9 @@
 		
 		The handle_error() function is used to return an error, which can then be handled and translated from the calling location.
 
-      write_file() should automatically handle locking, allowing use in some concurrency siturations.
-      This probably does not work for all applications, but should be enough in many cases.
-	  You may want to use a database for "heavy" load applications.
+        write_file() should automatically handle locking, allowing use in some concurrency siturations.
+        This probably does not work for all applications, but should be enough in many cases.
+        You may want to use a database for "heavy" load applications.
 	  
 		Author: Jacob Kristensen (JacobSeated)
 */
@@ -38,7 +38,7 @@ class file_handler {
 			} else {
 			  if (is_writable($file_or_dir.'/'.$object)) { // Check for write permissions
 				if(!unlink($file_or_dir.'/'.$object)) {
-				  // If unlink failed, possible due to a race condition, return an error
+				  // If unlink failed, possibly due to a race condition, return an error
 				  return $this->handle_error(array('action'=>'unlink', 'path' => $file_or_dir.'/'.$object));
 				}
 			  } else {
@@ -50,15 +50,12 @@ class file_handler {
 		return true; // Return true on success
 	  } else {
 		if(!unlink($file_or_dir)) {
-		  // If unlink failed, possible due to a race condition, return an error
+		  // If unlink failed, possibly due to a race condition, return an error
 		  return $this->handle_error(array('action'=>'unlink', 'path' => $file_or_dir));
 		}
 	  }
-	} else {
-	  return $this->handle_error(array(
-			'action'=>'is_writable',
-			'path' => $file_or_dir.'/'.$object
-	  ));
+	} else { // If the file or directory was not writable, we show an error
+	  return $this->handle_error(array('action'=>'is_writable', 'path' => $file_or_dir.'/'.$object));
 	}
 	 
  }
