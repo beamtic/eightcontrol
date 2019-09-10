@@ -186,7 +186,7 @@ class file_handler {
 	  return $this->handle_error(array('action' => 'mkdir', 'path' => $this->f_args['path']));
 	} else {return true;}
  }
- public function obtain_lock(resource $fp) {
+ public function obtain_lock($fp) {
 	if(is_writable($this->f_args['path'])) {
 	  $i = 0;
 	  while (!flock($fp, LOCK_EX | LOCK_NB) ) {
