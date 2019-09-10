@@ -1,21 +1,28 @@
 <?php
 /*
  *          Doorkeeper File Handler
- * 
+ *
  *        This example is intended to demonstrate simple use of the File Handler
- * 
- * 
- * */
+ *
+ *         @author Jacob Kristensen (JacobSeated)
+ */
+
+// ********************
+// Composition Root****
+// ********************
 
 // Remove trailing slashes (if present), and add one manually.
 // Note: This avoids a problem where some servers might add a trailing slash, and others not..
 define('BASE_PATH', rtrim(realpath('../../../'), "/") . '/');
 
-require BASE_PATH .'lib/core_classes/core_helpers_class.php';
-require BASE_PATH .'lib/file_handler/file_handler_class.php';
+// Class autoloader
+require BASE_PATH . 'shared/header.php';
 
-$helpersObj = new core_helpers();
-$fileHandlerObj = new file_handler($helpersObj);
+// Required helper methods
+$helpersObj = new \doorkeeper\lib\php_helpers\php_helpers();
+
+// File handler to Write and Read files
+$fileHandlerObj = new \doorkeeper\lib\file_handler\file_handler($helpersObj);
 
 $fp = @fopen($fileHandlerObj->f_args['path'], "r");
 
