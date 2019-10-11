@@ -78,7 +78,8 @@ class file_handler
      */
     public function delete_files(string $directory, string $pattern)
     {
-        $files = glob($directory . $pattern);
+        $directory = rtrim($directory, '/'); // Remove slashes at end if needed
+        $files = glob($directory . '/' . $pattern); // Re-add slash manually followed by $pattern
         foreach ($files as $file) {
             if (is_file($file)) {
                 if (!unlink($file)) {
