@@ -16,10 +16,9 @@ class php_helpers
      * an associative array instead of traditional function arguments.
      * This allows the developer to supply arguments in any order desired.
      *
-     * $default_argument_values_arr
-     *   is filled out by the developer on a per-function basis
-     * $arguments_arr
-     *   contains the provided arguments which are checked against  "$default_argument_values_arr"
+     * @param array $default_argument_values_arr is filled out by the developer on a per-function basis
+     * @param array $arguments_arr contains the provided arguments which are checked against  "$default_argument_values_arr"
+     * @return array An array of parameters for the function.
      */
     public function default_arguments(array $arguments_arr, array $default_argument_values_arr)
     {
@@ -40,10 +39,10 @@ class php_helpers
      * Reordering method to move an element in an array up or down.
      *
      *  @param array $array the array that must be worked on
-     *  @param $selected_key string or int of the key that should be moved.
+     *  @param mixed $selected_key string or int of the key that should be moved.
      *  @param string $direction the direction the element should be moved- either "up" or "down".
      *
-     *
+     *  @return array A new array with the key shoved in the requested direction.
      */
     public function array_shove(array $array, $selected_key, string $direction)
     {
