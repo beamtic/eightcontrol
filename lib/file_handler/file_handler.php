@@ -1,5 +1,5 @@
 <?php
-/*
+/**
  *           Doorkeeper File Handler
  *
  *                Class to handle creation, editing, and deletion of files and directories with support for locking
@@ -10,7 +10,7 @@
  *              This probably does not work for all applications, but should be enough in many cases.
  *              You may want to use a database for "heavy" load applications.
  *
- *         @author Jacob Kristensen (JacobSeated)
+ *         @author Jacob (JacobSeated)
  */
 
 namespace doorkeeper\lib\file_handler;
@@ -19,13 +19,18 @@ class file_handler
 {
 
     private $additional_error_data = array();
+    // private $helpers; // The $helpers object
 
-    public $f_args = array(); // Contains arguments to be used in file methods
-    public $lock_max_time = 20; // File-lock maximum time in seconds.
+    private $f_args = array(); // Contains arguments to be used in file methods
+    private $lock_max_time = 20; // File-lock maximum time in seconds.
 
-    public function __construct(object $helpers)
+    private $ft; // The $file_types object, used in http_stream_file()
+
+    public function __construct(object $helpers, object $superglobals, object $file_types)
     {
         $this->helpers = $helpers; // Helper methods to solve common programming problems
+        $this->ft = $file_types;
+        $this->sg = $superglobals;
     }
     /**
      *  A standard method to delete both directories and files,
@@ -114,7 +119,7 @@ class file_handler
             'lines_to_read' => $this->f_args['lines_to_read'],
         );
         if ($fp = fopen($this->f_args['path'], "r")) {
-            $this->obtain_lock($fp); // Attempt to obtain file lock, error if the timeout is reached before obtaining the lock
+            $this->obtain_lock($fp, true); // Attempt to obtain_lock, error if the timeout is reached before obtaining the lock
             if ($this->f_args['lines_to_read'] === false) { // Reads entire file until End Of File has been reached
                 $lc = 1;
                 $file_content = '';
@@ -157,7 +162,7 @@ class file_handler
      *  within a loop. Also useful to count the lines in your source code.
      *
      *  @param array $arguments_arr path=REQUIRED (string), start_line=0 (int), max_line_length=4096 (int), lines_to_read=false (int)
-     *
+     *  @return mixed
      */
     public function count_lines(array $arguments_arr)
     {
@@ -177,7 +182,7 @@ class file_handler
             'max_line_length' => $this->f_args['max_line_length'],
         );
         if ($fp = @fopen($this->f_args['path'], "r")) {
-            $this->obtain_lock($fp); // Attempt to obtain file lock, error if the timeout is reached before obtaining the lock
+            $this->obtain_lock($fp, true); // Attempt to obtain file lock, error if the timeout is reached before obtaining the lock
             $lc = 0;
             while (($buffer = fgets($fp, $this->f_args['max_line_length'])) !== false) {
                 ++$lc;
@@ -201,7 +206,7 @@ class file_handler
      *  A file lock should automatically be obtained, ideal in concurrency siturations.
      *
      *  @param array $arguments_arr path=REQUIRED (string), content='' (string), mode=w (string)
-     *
+     *  @return mixed
      */
     public function write_file(array $arguments_arr)
     {
@@ -229,7 +234,7 @@ class file_handler
      *  Method to create a new directory.
      *
      *   @param array $arguments_arr path=REQUIRED (string), permissions=0775 (int)
-     *
+     *   @return mixed
      */
     public function create_directory(array $arguments_arr)
     {
@@ -239,6 +244,9 @@ class file_handler
         );
         $this->f_args = $this->helpers->default_arguments($arguments_arr, $default_argument_values_arr);
         if (file_exists($this->f_args['path'])) {
+            $this->additional_error_data = array(
+                'source' => __METHOD__, // The class and method name where the error occured
+            );
             return $this->handle_error(array('action' => 'file_exists', 'path' => $this->f_args['path']));
         }
         if (!mkdir($this->f_args['path'], 0777, true)) { // Bug? Perform chmod after!
@@ -250,11 +258,24 @@ class file_handler
             return true;
         }
     }
-    public function obtain_lock($fp)
+    /**
+     *  Method to obtain a file lock before reading (shared) or writing (single) from/to files.
+     *
+     *   @param $fp file pointer.
+     *   @param boolean $LOCK_SH The type of lock to be obtained.
+     *   @return mixed
+     */
+    public function obtain_lock($fp, $LOCK_SH = false)
     {
+        // Add the right bitmask for use with flock
+        if ($LOCK_SH === true) {
+            $lock_type = LOCK_SH | LOCK_NB;
+        } else {
+            $lock_type = LOCK_EX | LOCK_NB;
+        }
         if (is_writable($this->f_args['path'])) {
             $i = 0;
-            while (!flock($fp, LOCK_EX | LOCK_NB)) {
+            while (!flock($fp, $lock_type)) {
                 ++$i;
                 if (($i == $this->lock_max_time)) {
                     return $this->handle_error(array('action' => 'flock', 'path' => $this->f_args['path']));
@@ -298,70 +319,104 @@ class file_handler
         switch ($arg['action']) {
             case "fopen":
                 $error_arr = array(
-                    'error' => '1', // 1 = Failed to open file
+                    'error' => '1',
+                    'msg' => 'Failed to open file.',
                     'path' => $arg['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
             case "fwrite":
                 $error_arr = array(
-                    'error' => '2', // 2 = Failed to create or write file
+                    'error' => '2',
+                    'msg' => 'Failed to create or write file.',
                     'path' => $arg['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
             case "mkdir":
                 $error_arr = array(
-                    'error' => '3', // 3 = Failed to create directory
+                    'error' => '3',
+                    'msg' => 'Failed to create directory.',
                     'path' => $arg['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
             case "feof":
                 $error_arr = array(
-                    'error' => '4', // 4 = Unexpected fgets() fail after reading from file
+                    'error' => '4',
+                    'msg' => 'Unexpected fgets() fail after reading from file.',
                     'path' => $arg['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
             case "is_writable":
                 $error_arr = array(
-                    'error' => '5', // 5 = The file or directory is not writeable
+                    'error' => '5',
+                    'msg' => 'The file or directory is not writeable.',
                     'path' => $arg['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
             case "file_put_contents":
                 $error_arr = array(
-                    'error' => '6', // 6 = Unable to write to file, but the file is writable
+                    'error' => '6',
+                    'msg' => 'Unable to write to file, but the file is writable.',
                     'path' => $arg['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
             case "flock":
                 $error_arr = array(
-                    'error' => '7', // 7 = Unable to obtain file lock (timeout reached)
+                    'error' => '7',
+                    'msg' => 'Unable to obtain file lock (timeout reached).',
                     'path' => $arg['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
             case "unlink":
                 $error_arr = array(
-                    'error' => '8', // 8 = Unable to unlink file, possible race condition
+                    'error' => '8',
+                    'msg' => 'Unable to unlink file, possible race condition.',
                     'path' => $arg['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
             case "file_exists":
                 $error_arr = array(
-                    'error' => '9', // 9 = File or directory already exists
+                    'error' => '9',
+                    'msg' => 'File or directory already exists.',
                     'path' => $arg['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
             case "rmdir":
                 $error_arr = array(
-                    'error' => '10', // 10 = Unable to remove directory
+                    'error' => '10',
+                    'msg' => 'Unable to remove directory.',
+                    'path' => $arg['path'],
+                    'aed' => $aed_html_table,
+                );
+                break;
+            case "!file_exists":
+                $error_arr = array(
+                    'error' => '11',
+                    'msg' => 'The file did not exist.',
+                    'path' => $arg['path'],
+                    'aed' => $aed_html_table,
+                );
+                break;
+            case "filesize":
+                $error_arr = array(
+                    'error' => '12',
+                    'msg' => 'Unexpected filesize() fail.',
+                    'path' => $arg['path'],
+                    'aed' => $aed_html_table,
+                );
+                break;
+            case "has_extension":
+                $error_arr = array(
+                    'error' => '13',
+                    'msg' => 'The file path had no file extension.',
                     'path' => $arg['path'],
                     'aed' => $aed_html_table,
                 );
@@ -370,4 +425,145 @@ class file_handler
 
         return $error_arr; // Return the error, and handle it elsewhere
     }
+
+    /**
+     * Method to "stream" a file over HTTP in response to a client request.
+     * "range" requests are supported, making it possible to stream audio and video files from PHP.
+     * This function exits() on success, and outputs an error array on failure.
+     * error 1 = failed to open file. error 11 = file did not exist
+     * @param array $arguments_arr
+     *
+     */
+    public function http_stream_file(array $arguments_arr)
+    {
+        $default_argument_values_arr = array(
+            'path' => 'REQUIRED',
+            'chunk_size' => 8192,
+        );
+        $this->f_args = $this->helpers->default_arguments($arguments_arr, $default_argument_values_arr);
+
+        // If an error occurs...
+        $this->additional_error_data = array(
+            'source' => __METHOD__,
+            'chunk_size' => $this->f_args['chunk_size'],
+        );
+
+        // Variables
+        $response_headers = array();
+
+        // -----------------------
+        // Handle the file--------
+        // -----------------------
+        if (!file_exists($this->f_args['path'])) {
+            // The file did not exist, handle the error elsewhere
+            return $this->handle_error(array('action' => '!file_exists', 'path' => $this->f_args['path']));
+        }
+        if (($file_size = filesize($this->f_args['path'])) === false) {
+            return $this->handle_error(array('action' => 'filesize', 'path' => $this->f_args['path']));
+        }
+
+        $start = 0;
+        $end = $file_size - 1; // Minus 1 (Byte ranges are zero-indexed)
+
+        // Open file for (r) reading (b=binary safe)
+        if ($fp = @fopen($this->f_args['path'], 'rb')) {
+            $this->obtain_lock($fp, true);
+        } else {
+            return $this->handle_error(array('action' => 'fopen', 'path' => $this->f_args['path']));
+        }
+
+        // -----------------------
+        // Handle "range" requests
+        // -----------------------
+        // Determine if the "range" Request Header was set
+        $http_range = $this->sg->get_SERVER('HTTP_RANGE');
+
+        if (isset($http_range)) {
+
+            // Parse the range header
+            if (preg_match('|=([0-9]+)-([0-9]+)$|', $http_range, $matches)) {
+                $start = $matches["1"];
+                $end = $matches["2"] - 1;
+            } elseif (preg_match('|=([0-9]+)-?$|', $http_range, $matches)) {
+                $start = $matches["1"];
+            }
+
+            // Make sure we are not out of range
+            if (($start > $end) || ($start > $file_size) || ($end > $file_size) || ($end <= $start)) {
+                http_response_code(416);
+                exit();
+            }
+
+            // Position the file pointer at the requested range
+            fseek($fp, $start);
+
+            // Respond with 206 Partial Content
+            http_response_code(206);
+
+            // A "content-range" response header should only be sent if the "range" header was used in the request
+            $response_headers['content-range'] = 'bytes ' . $start . '-' . $end . '/' . $file_size;
+        } else {
+            // If the range header is not present, respond with a 200 code and start sending some content
+            http_response_code(200);
+        }
+
+        // Tell the client we support range-requests
+        $response_headers['accept-ranges'] = 'bytes';
+        // Set the content length to whatever remains
+        $response_headers['content-length'] = ($file_size - $start);
+
+        // ---------------------
+        // Send the file headers
+        // ---------------------
+        // Send the "last-modified" response header
+        // and compare with the "if-modified-since" request header (if present)
+        $if_modified_since = $this->sg->get_SERVER('HTTP_IF_MODIFIED_SINCE');
+
+        if (($timestamp = filemtime($this->f_args['path'])) !== false) {
+            $response_headers['last-modified'] = gmdate("D, d M Y H:i:s", $timestamp) . ' GMT';
+            if ((isset($if_modified_since)) && ($if_modified_since == $this->headers['last-modified'])) {
+                http_response_code(304); // Not Modified
+
+                // The below uncommented lines was used while testing,
+                // and might still be useful if having problems caching a file.
+                // Use it to manually compare "if-modified-since" and "last-modified" while debugging.
+
+                // $datafile = $if_modified_since . PHP_EOL . $this->headers['last-modified'];
+                // file_put_contents('/var/www/testing/tmp/' . $name . '.txt', $datafile);
+
+                exit();
+            }
+        }
+
+        // Get additional headers for the requested file-type
+        if (($extension = $this->ft->has_extension($this->f_args['path'])) === false) {
+            return $this->handle_error(array('action' => 'has_extension', 'path' => $this->f_args['path']));
+        }
+
+        $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
+
+        foreach ($response_headers as $header => $value) {
+            header($header . ': ' . $value);
+        }
+
+        // ---------------------
+        // Start the file output
+        // ---------------------
+        $buffer = $this->f_args['chunk_size'];
+        while (!feof($fp) && ($pointer = ftell($fp)) <= $end) {
+
+            // If next $buffer will pass $end,
+            // calculate remaining size
+            if ($pointer + $buffer > $end) {
+                $buffer = $end - $pointer + 1;
+            }
+
+            echo fread($fp, $buffer);
+
+            flush();
+        }
+        fclose($fp);
+        exit();
+    }
+
 }
