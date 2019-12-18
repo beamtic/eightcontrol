@@ -21,7 +21,7 @@ class file_handler
     private $additional_error_data = array();
     // private $helpers; // The $helpers object
 
-    private $f_args = array(); // Contains arguments to be used in file methods
+    private $f_args;
     private $lock_max_time = 20; // File-lock maximum time in seconds.
 
     private $ft; // The $file_types object, used in http_stream_file()
@@ -104,12 +104,12 @@ class file_handler
     public function read_file_lines(array $arguments_arr)
     {
         $default_argument_values_arr = array(
-            'path' => 'REQUIRED',
-            'start_line' => 0,
-            'max_line_length' => '4096',
-            'lines_to_read' => false,
+            'path' => ['type' => 'string', 'required' => true],
+            'start_line' => ['default' => 0, 'type' => 'int', 'required' => false],
+            'max_line_length' => ['default' => 4096, 'type' => 'int', 'required' => false],
+            'lines_to_read' => ['default' => false, 'type' => 'int', 'required' => false],
         );
-        $this->f_args = $this->helpers->default_arguments($arguments_arr, $default_argument_values_arr);
+        $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
 
         // If an error occurs, add some shared debugging info
         $this->additional_error_data = array(
@@ -169,12 +169,12 @@ class file_handler
         // It may be nessecery to count the lines in very large files, so we can read the file, say, 100 lines at a time.
         // Note. Any file-lock should be obtained outside this method, to prevent writing to a file while we are counting the lines in it
         $default_argument_values_arr = array(
-            'path' => 'REQUIRED',
-            'start_line' => 0,
-            'max_line_length' => 4096,
-            'lines_to_read' => false,
+            'path' => ['type' => 'string', 'required' => true],
+            'start_line' => ['default' => '0', 'type' => 'string', 'required' => false],
+            'max_line_length' => ['default' => '0', 'type' => 'string', 'required' => false],
+            'lines_to_read' => ['default' => false, 'type' => 'int', 'required' => false],
         );
-        $this->f_args = $this->helpers->default_arguments($arguments_arr, $default_argument_values_arr);
+        $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
 
         // If an error occurs, add some shared debugging info
         $this->additional_error_data = array(
@@ -211,11 +211,11 @@ class file_handler
     public function write_file(array $arguments_arr)
     {
         $default_argument_values_arr = array(
-            'path' => 'REQUIRED',
-            'content' => '',
-            'mode' => 'w', // w = open for writing, truncates the file, and attempts to create the file if it does not exist.
+            'path' => ['required' => true, 'type' => 'string'],
+            'content' => ['required' => false, 'type' => 'string', 'default' => ''],
+            'mode' => ['required' => false, 'type' => 'string', 'default' => 'w'], // w = open for writing, truncates the file, and attempts to create the file if it does not exist.
         );
-        $this->f_args = $this->helpers->default_arguments($arguments_arr, $default_argument_values_arr);
+        $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
 
         $this->additional_error_data = array(
             'source' => __METHOD__, // The class and method name where the error occured
@@ -239,10 +239,10 @@ class file_handler
     public function create_directory(array $arguments_arr)
     {
         $default_argument_values_arr = array(
-            'path' => 'REQUIRED',
-            'permissions' => 0775, // This should be an int value!
+            'path' => ['required' => true, 'type' => 'string'],
+            'permissions' => ['required' => 'false', 'type' => 'int', 'default' => 0775], // This should be an int value!
         );
-        $this->f_args = $this->helpers->default_arguments($arguments_arr, $default_argument_values_arr);
+        $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
         if (file_exists($this->f_args['path'])) {
             $this->additional_error_data = array(
                 'source' => __METHOD__, // The class and method name where the error occured
@@ -303,10 +303,10 @@ class file_handler
     private function handle_error(array $arguments_arr)
     {
         $default_argument_values_arr = array(
-            'action' => 'REQUIRED',
-            'path' => '',
+            'action' => ['required' => true, 'type' => 'string'],
+            'path' => ['required' => false, 'type' => 'string', 'default' => ''],
         );
-        $arg = $this->helpers->default_arguments($arguments_arr, $default_argument_values_arr);
+        $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
 
         $aed_html_table = '';
 
@@ -316,12 +316,12 @@ class file_handler
             }$aed_html_table = '<section><h1>Additional error data:</h1><table>' . $aed_html_table . '</table></section>';
         } else { $aed_html_table = '';}
 
-        switch ($arg['action']) {
+        switch ($this->f_args['action']) {
             case "fopen":
                 $error_arr = array(
                     'error' => '1',
                     'msg' => 'Failed to open file.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -329,7 +329,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '2',
                     'msg' => 'Failed to create or write file.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -337,7 +337,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '3',
                     'msg' => 'Failed to create directory.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -345,7 +345,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '4',
                     'msg' => 'Unexpected fgets() fail after reading from file.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -353,7 +353,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '5',
                     'msg' => 'The file or directory is not writeable.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -361,7 +361,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '6',
                     'msg' => 'Unable to write to file, but the file is writable.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -369,7 +369,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '7',
                     'msg' => 'Unable to obtain file lock (timeout reached).',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -377,7 +377,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '8',
                     'msg' => 'Unable to unlink file, possible race condition.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -385,7 +385,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '9',
                     'msg' => 'File or directory already exists.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -393,7 +393,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '10',
                     'msg' => 'Unable to remove directory.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -401,7 +401,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '11',
                     'msg' => 'The file did not exist.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -409,7 +409,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '12',
                     'msg' => 'Unexpected filesize() fail.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -417,7 +417,7 @@ class file_handler
                 $error_arr = array(
                     'error' => '13',
                     'msg' => 'The file path had no file extension.',
-                    'path' => $arg['path'],
+                    'path' => $this->f_args['path'],
                     'aed' => $aed_html_table,
                 );
                 break;
@@ -437,10 +437,10 @@ class file_handler
     public function http_stream_file(array $arguments_arr)
     {
         $default_argument_values_arr = array(
-            'path' => 'REQUIRED',
-            'chunk_size' => 8192,
+            'path' => ['required' => true, 'type' => 'string'],
+            'chunk_size' => ['required' => false, 'type' => 'int', 'default' => 8192],
         );
-        $this->f_args = $this->helpers->default_arguments($arguments_arr, $default_argument_values_arr);
+        $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
 
         // If an error occurs...
         $this->additional_error_data = array(
@@ -521,7 +521,7 @@ class file_handler
 
         if (($timestamp = filemtime($this->f_args['path'])) !== false) {
             $response_headers['last-modified'] = gmdate("D, d M Y H:i:s", $timestamp) . ' GMT';
-            if ((isset($if_modified_since)) && ($if_modified_since == $this->headers['last-modified'])) {
+            if ((isset($if_modified_since)) && ($if_modified_since == $response_headers['last-modified'])) {
                 http_response_code(304); // Not Modified
 
                 // The below uncommented lines was used while testing,
