@@ -1,4 +1,5 @@
 <?php
+
 /**
  *      Doorkeeper
  *
@@ -11,7 +12,11 @@ namespace doorkeeper\lib\php_helpers;
 
 class php_helpers
 {
-    /**
+    /**  
+     * --DEPRECATED--
+     * WARNING: This function should not be used for new code, use handle_arguments() instead!
+     * This function will be remeoved soon!!!
+     * 
      * Method to define default arguments using
      * an associative array instead of traditional function arguments.
      * This allows the developer to supply arguments in any order desired.
@@ -35,6 +40,128 @@ class php_helpers
         }
         return $arguments_arr;
     }
+
+    /**
+     * Method to validate $input_arguments, and compare with $defined_arguments.
+     * The input arguments are valid if the function is not interrupted.
+     *
+     * @param array $defined_arguments is filled out by the developer on a per-function basis
+     * @param array $input_arguments contains the provided arguments which are checked against  "$default_argument_values_arr"
+     * @return void
+     */
+    public function handle_arguments($input_arguments, $defined_arguments)
+    {
+        // Check if parameter is defined, and validate the type (if provided)
+        foreach ($input_arguments as $key => $value) {
+            if (!isset($defined_arguments["$key"])) {
+                echo 'Unknown function parameter: ' . $key . PHP_EOL;
+                echo 'used in: ' . __FUNCTION__ . PHP_EOL;
+                exit();
+            }
+            // Validate the type, if defined. A type is always defined in an array.
+            // I.e.: array('required' => true, 'type' => 'object')
+            if (is_array($defined_arguments["$key"])) {
+                // Check if the developer remembered to define both "required" and "type"
+                if ((!isset($defined_arguments["$key"]['required'])) || (!isset($defined_arguments["$key"]['type']))) {
+                    echo 'Missing argument definition "required" or "type".';
+                    exit();
+                }
+                if (!$this->type_check($value, $defined_arguments["$key"]['type'])) {
+                    echo 'Invalid input type of: ' . $key . PHP_EOL;
+                    echo 'used in: ' . __FUNCTION__ . PHP_EOL;
+                    echo 'Expected ' . $defined_arguments["$key"]['type'] . ', ' . gettype($value) . ' given.' . PHP_EOL;
+                    exit();
+                }
+                // In case value was an array, make sure to add possible default elements.
+                if ((isset($defined_arguments["$key"]['default'])) && (is_array($defined_arguments["$key"]['default']))) {
+                    $input_arguments["$key"] += $defined_arguments["$key"]['default'];
+                }
+            }
+        }
+        // --------------------------------------------------
+        // Check for missing required parameters-------------
+        // The "required" setting only needs to be checked when the parameter is missing
+        // --------------------------------------------------
+        $missing_parms = array_diff_key($defined_arguments, $input_arguments);
+        foreach ($missing_parms as $key => $value) {
+            if (!is_array($defined_arguments["$key"])) {
+                // If no type validation
+                if (true === $defined_arguments["$key"]) {
+                    echo 'Missing required parameter: ' . $key . PHP_EOL;
+                    echo 'used in: ' . __FUNCTION__ . PHP_EOL;
+                    exit();
+                }
+            } else {
+                // Check if the developer remembered to define both "required" and "type"
+                if ((!isset($defined_arguments["$key"]['required'])) || (!isset($defined_arguments["$key"]['type']))) {
+                    echo 'Missing argument definition "required" or "type". ';
+                    print_r($input_arguments);
+                    exit();
+                }
+                // If type was to be validated, check the "required" key
+                if (true === $defined_arguments["$key"]['required']) {
+                    echo 'Missing required parameter: ' . $key . PHP_EOL;
+                    echo 'used in: ' . __FUNCTION__ . PHP_EOL;
+                    exit();
+                }
+                // Check if the parameter has a default value
+                if (isset($defined_arguments["$key"]['default'])) {
+                    $input_arguments["$key"] = $defined_arguments["$key"]['default'];
+                }
+            }
+        }
+        return $input_arguments;
+    }
+
+    /**
+     * Checks if a value is of the supplied type.
+     *
+     * @param mixed $input_value The value to validate.
+     * @param string $defined_type The type to check for.
+     * @return boolean true when input type matched defined type, false otherwise.
+     */
+    public function type_check($input_value, $defined_type)
+    {
+        switch ($defined_type) {
+            case 'string':
+                
+                return is_string($input_value);
+                break;
+            case 'str':
+                return is_string($input_value);
+                break;
+            case 'integeer':
+                return is_int($input_value);
+                break;
+            case 'int':
+                return is_int($input_value);
+                break;
+            case 'object':
+                return is_object($input_value);
+                break;
+            case 'array':
+                return is_array($input_value);
+                break;
+            case 'bool':
+                return is_bool($input_value);
+                break;
+            case 'resource':
+                return is_resource($input_value);
+                break;
+            case 'null':
+                return is_null($input_value);
+                break;
+                // Mixed type will allow anything
+            case 'mixed':
+                return true;
+                break;
+                // For unknown types we return false
+            default:
+                return false;
+                break;
+        }
+    }
+
     /**
      * Reordering method to move an element in an array up or down.
      *
@@ -84,12 +211,12 @@ class php_helpers
             }
         }
     }
-/**
- * UFT-8 safe method to count the number of characters in a string.
- *
- * @param string $string
- * @return integeer
- */
+    /**
+     * UFT-8 safe method to count the number of characters in a string.
+     *
+     * @param string $string
+     * @return integeer
+     */
     public function count_characters(string $string)
     {
         return count(preg_split('//u', $string, -1, PREG_SPLIT_NO_EMPTY));
