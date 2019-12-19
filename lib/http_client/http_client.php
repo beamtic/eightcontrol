@@ -30,12 +30,12 @@ class http_client
     {
         // Set default values of arguments
         $default_argument_values_arr = array(
-            'url' => 'REQUIRED',
-            'handle_cookies' => 'false',
-            'request_type' => 'GET',
-            'postdata' => 'false',
+            'url' => ['required' => true, 'type' => 'string'],
+            'handle_cookies' => ['required' => true, 'type' => 'boolean', 'default' => false],
+            'request_type' => ['required' => true, 'type' => 'string', 'default' => 'GET'],
+            'postdata' => ['required' => true, 'type' => 'string', 'default' => false],
         );
-        $arguments_arr = $this->helpers->default_arguments($arguments_arr, $default_argument_values_arr);
+        $arguments_arr = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
         // Arguments recently replaced:
         // $request_url, $handle_cookies=false, $request_type='GET', $postdata=false
         // Make sure you update to the new array-format
@@ -87,7 +87,7 @@ class http_client
                 // 1. it was sending "multipart/form-data" with a boundary, instead of sending it as "application/x-www-form-urlencoded"
                 // 2. using http_build_query on the array i was passing somehow messed up the post fields
                 // Finally i just passed the POST data as a naked string – this seems to solve all the submission problems
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $postdata);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $arguments_arr['postdata']);
             }
         } else if ($arguments_arr['request_type'] == 'HEAD') {
             curl_setopt($ch, CURLOPT_NOBODY, true);
