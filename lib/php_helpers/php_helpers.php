@@ -95,7 +95,6 @@ class php_helpers
                 // Check if the developer remembered to define both "required" and "type"
                 if ((!isset($defined_arguments["$key"]['required'])) || (!isset($defined_arguments["$key"]['type']))) {
                     echo 'Missing argument definition "required" or "type". ';
-                    print_r($input_arguments);
                     exit();
                 }
                 // If type was to be validated, check the "required" key
