@@ -89,7 +89,7 @@ class file_handler
             if (is_file($file)) {
                 if (!unlink($file)) {
                     // If unlink failed, possibly due to a race condition, return an error
-                    return $this->handle_error(array('action' => 'unlink', 'path' => $file_or_dir . '/' . $object));
+                    return $this->handle_error(array('action' => 'unlink', 'path' => $directory . '/' . $file));
                 }
             }
         }
@@ -119,7 +119,13 @@ class file_handler
             'lines_to_read' => $this->f_args['lines_to_read'],
         );
         if ($fp = fopen($this->f_args['path'], "r")) {
-            $this->obtain_lock($fp, true); // Attempt to obtain_lock, error if the timeout is reached before obtaining the lock
+
+            // Attempt to obtain_lock
+            $lock_status = $this->obtain_lock($fp, true);
+            // Return the error array if the timeout is reached before obtaining the lock
+            if ($lock_status !== true) {
+                return $lock_status;
+            }
             if ($this->f_args['lines_to_read'] === false) { // Reads entire file until End Of File has been reached
                 $lc = 1;
                 $file_content = '';
@@ -182,7 +188,13 @@ class file_handler
             'max_line_length' => $this->f_args['max_line_length'],
         );
         if ($fp = @fopen($this->f_args['path'], "r")) {
-            $this->obtain_lock($fp, true); // Attempt to obtain file lock, error if the timeout is reached before obtaining the lock
+
+            // Attempt to obtain_lock
+            $lock_status = $this->obtain_lock($fp, true);
+            // Return the error array if the timeout is reached before obtaining the lock
+            if ($lock_status !== true) {
+                return $lock_status;
+            }
             $lc = 0;
             while (($buffer = fgets($fp, $this->f_args['max_line_length'])) !== false) {
                 ++$lc;
@@ -213,6 +225,7 @@ class file_handler
         $default_argument_values_arr = array(
             'path' => ['required' => true, 'type' => 'string'],
             'content' => ['required' => false, 'type' => 'string', 'default' => ''],
+            'permissions' => ['required' => 'false', 'type' => 'int', 'default' => 0775],
             'mode' => ['required' => false, 'type' => 'string', 'default' => 'w'], // w = open for writing, truncates the file, and attempts to create the file if it does not exist.
         );
         $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
@@ -222,10 +235,21 @@ class file_handler
         );
 
         if ($fp = @fopen($this->f_args['path'], $this->f_args['mode'])) {
-            $this->obtain_lock($fp); // Attempt to obtain file lock, error if the timeout is reached before obtaining the lock
+
+            // Attempt to obtain_lock
+            $lock_status = $this->obtain_lock($fp);
+            // Return the error array if the timeout is reached before obtaining the lock
+            if ($lock_status !== true) {
+                return $lock_status;
+            }
             if (!fwrite($fp, $this->f_args['content'])) {
                 return $this->handle_error(array('action' => 'fwrite', 'path' => $this->f_args['path']));
-            } else {fclose($fp);return true;} // fclose also releases the file lock
+            } else {
+              fclose($fp);
+              // We should also update file permissions after creating the file
+              chmod($this->f_args['path'], $this->f_args['permissions']);
+              return true;
+            } // fclose also releases the file lock
         } else {
             return $this->handle_error(array('action' => 'fopen', 'path' => $this->f_args['path']));
         }
@@ -266,7 +290,7 @@ class file_handler
      *   @return mixed
      */
     public function obtain_lock($fp, $LOCK_SH = false)
-    {
+    { 
         // Add the right bitmask for use with flock
         if ($LOCK_SH === true) {
             $lock_type = LOCK_SH | LOCK_NB;
@@ -441,7 +465,7 @@ class file_handler
             'chunk_size' => ['required' => false, 'type' => 'int', 'default' => 8192],
         );
         $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
-
+        
         // If an error occurs...
         $this->additional_error_data = array(
             'source' => __METHOD__,
@@ -467,7 +491,12 @@ class file_handler
 
         // Open file for (r) reading (b=binary safe)
         if ($fp = @fopen($this->f_args['path'], 'rb')) {
-            $this->obtain_lock($fp, true);
+            // Attempt to obtain_lock
+            $lock_status = $this->obtain_lock($fp, true);
+            // Return the error array if the timeout is reached before obtaining the lock
+            if ($lock_status !== true) {
+               return $lock_status;
+            }
         } else {
             return $this->handle_error(array('action' => 'fopen', 'path' => $this->f_args['path']));
         }
@@ -477,6 +506,7 @@ class file_handler
         // -----------------------
         // Determine if the "range" Request Header was set
         $http_range = $this->sg->get_SERVER('HTTP_RANGE');
+
 
         if (isset($http_range)) {
 
@@ -534,7 +564,7 @@ class file_handler
                 exit();
             }
         }
-
+        
         // Get additional headers for the requested file-type
         if (($extension = $this->ft->has_extension($this->f_args['path'])) === false) {
             return $this->handle_error(array('action' => 'has_extension', 'path' => $this->f_args['path']));
@@ -543,7 +573,7 @@ class file_handler
         $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
 
         foreach ($response_headers as $header => $value) {
-            header($header . ': ' . $value);
+           header($header . ': ' . $value);
         }
 
         // ---------------------
@@ -558,8 +588,14 @@ class file_handler
                 $buffer = $end - $pointer + 1;
             }
 
-            echo fread($fp, $buffer);
-
+            // WARNING:
+            // * In regards to this loop and calling fread inside a loop. *
+            // The error supression of fread is intentional.
+            // Without the supression, we risk filling up all available disk space
+            // with error logging on some servers, in mere seconds!!
+            // While the specific obtain_lock() error should be fixed, the supression
+            // was left in place just to be safe..
+            echo @fread($fp, $buffer);
             flush();
         }
         fclose($fp);
