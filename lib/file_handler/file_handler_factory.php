@@ -18,14 +18,23 @@ namespace doorkeeper\lib\file_handler;
 class file_handler_factory
 {
 
+    private $base_path;
+
+    public function __construct($base_path)
+    {
+        $this->base_path = $base_path;
+    }
+
     /**
      * Function to "build" the final object with all of its dependencies
      *
      * @return object The File Handler Object
      */
-    public static function build()
+    public function build()
     {
-        $superglobals = new \doorkeeper\lib\superglobals\superglobals();
+        require $this->base_path . '/lib/file_handler/execption.php';
+
+        $superglobals = new \doorkeeper\lib\php_helpers\superglobals();
         $helpers = new \doorkeeper\lib\php_helpers\php_helpers();
         $file_types = new \doorkeeper\lib\file_handler\file_types();
 
