@@ -14,35 +14,6 @@ use Exception;
 
 class php_helpers
 {
-    /**  
-     * --DEPRECATED--
-     * WARNING: This function should not be used for new code, use handle_arguments() instead!
-     * This function will be remeoved soon!!!
-     * 
-     * Method to define default arguments using
-     * an associative array instead of traditional function arguments.
-     * This allows the developer to supply arguments in any order desired.
-     *
-     * @param array $default_argument_values_arr is filled out by the developer on a per-function basis
-     * @param array $arguments_arr contains the provided arguments which are checked against  "$default_argument_values_arr"
-     * @return array An array of parameters for the function.
-     * @throws Exception on failure.
-     */
-    public function default_arguments(array $arguments_arr, array $default_argument_values_arr)
-    {
-        trigger_error('This method will be removed soon.', E_USER_DEPRECATED);
-        foreach ($default_argument_values_arr as $key => $value) { // Set default values
-            if (isset($arguments_arr["{$key}"]) == false) {
-                if ($default_argument_values_arr["{$key}"] !== 'REQUIRED') {
-                    $arguments_arr["{$key}"] = $value;
-                } else { // The error handling may be improved as the project moves forward
-                    throw new Exception('Missing required key: ' . $key);
-                }
-            }
-        }
-        return $arguments_arr;
-    }
-
     /**
      * Method to validate $input_arguments, and compare with $defined_arguments.
      * The input arguments are valid if the function is not interrupted.
