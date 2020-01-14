@@ -10,6 +10,8 @@
 
 namespace doorkeeper\lib\php_helpers;
 
+use Exception;
+
 class php_helpers
 {
     /**  
@@ -24,17 +26,17 @@ class php_helpers
      * @param array $default_argument_values_arr is filled out by the developer on a per-function basis
      * @param array $arguments_arr contains the provided arguments which are checked against  "$default_argument_values_arr"
      * @return array An array of parameters for the function.
+     * @throws Exception on failure.
      */
     public function default_arguments(array $arguments_arr, array $default_argument_values_arr)
     {
-
+        trigger_error('This method will be removed soon.', E_USER_DEPRECATED);
         foreach ($default_argument_values_arr as $key => $value) { // Set default values
             if (isset($arguments_arr["{$key}"]) == false) {
                 if ($default_argument_values_arr["{$key}"] !== 'REQUIRED') {
                     $arguments_arr["{$key}"] = $value;
                 } else { // The error handling may be improved as the project moves forward
-                    echo 'Missing required key: ' . $key;
-                    exit();
+                    throw new Exception('Missing required key: ' . $key);
                 }
             }
         }
@@ -47,30 +49,29 @@ class php_helpers
      *
      * @param array $defined_arguments is filled out by the developer on a per-function basis
      * @param array $input_arguments contains the provided arguments which are checked against  "$default_argument_values_arr"
-     * @return void
+     * @return array Returns an array on success exits with an error on failure.
+     * @throws Exception on failure.
      */
     public function handle_arguments($input_arguments, $defined_arguments)
     {
         // Check if parameter is defined, and validate the type (if provided)
         foreach ($input_arguments as $key => $value) {
             if (!isset($defined_arguments["$key"])) {
-                echo 'Unknown function parameter: ' . $key . PHP_EOL;
-                echo 'used in: ' . __FUNCTION__ . PHP_EOL;
-                exit();
+                throw new \Exception('Unknown function parameter: ' . $key);
             }
             // Validate the type, if defined. A type is always defined in an array.
             // I.e.: array('required' => true, 'type' => 'object')
             if (is_array($defined_arguments["$key"])) {
                 // Check if the developer remembered to define both "required" and "type"
                 if ((!isset($defined_arguments["$key"]['required'])) || (!isset($defined_arguments["$key"]['type']))) {
-                    echo 'Missing argument definition "required" or "type".';
+                    throw new \Exception('Missing argument definition "required" or "type".');
                     exit();
                 }
                 if (!$this->type_check($value, $defined_arguments["$key"]['type'])) {
-                    echo 'Invalid input type of: ' . $key . PHP_EOL;
-                    echo 'used in: ' . __FUNCTION__ . PHP_EOL;
-                    echo 'Expected ' . $defined_arguments["$key"]['type'] . ', ' . gettype($value) . ' given.' . PHP_EOL;
-                    exit();
+                    throw new \Exception(
+                        'Invalid input type for: ' . $key . "\n"
+                        . 'Expected ' . $defined_arguments["$key"]['type'] . ', ' . gettype($value) . ' given.'
+                    );
                 }
                 // In case value was an array, make sure to add possible default elements.
                 if ((isset($defined_arguments["$key"]['default'])) && (is_array($defined_arguments["$key"]['default']))) {
@@ -87,21 +88,16 @@ class php_helpers
             if (!is_array($defined_arguments["$key"])) {
                 // If no type validation
                 if (true === $defined_arguments["$key"]) {
-                    echo 'Missing required parameter: ' . $key . PHP_EOL;
-                    echo 'used in: ' . __FUNCTION__ . PHP_EOL;
-                    exit();
+                    throw new \Exception('Missing required parameter: ' . $key);
                 }
             } else {
                 // Check if the developer remembered to define both "required" and "type"
                 if ((!isset($defined_arguments["$key"]['required'])) || (!isset($defined_arguments["$key"]['type']))) {
-                    echo 'Missing argument definition "required" or "type". ';
-                    exit();
+                    throw new \Exception('Missing argument definition "required" or "type".');
                 }
                 // If type was to be validated, check the "required" key
                 if (true === $defined_arguments["$key"]['required']) {
-                    echo 'Missing required parameter: ' . $key . PHP_EOL;
-                    echo 'used in: ' . __FUNCTION__ . PHP_EOL;
-                    exit();
+                    throw new \Exception('Missing required parameter: ' . $key);
                 }
                 // Check if the parameter has a default value
                 if (isset($defined_arguments["$key"]['default'])) {
@@ -123,7 +119,7 @@ class php_helpers
     {
         switch ($defined_type) {
             case 'string':
-                
+
                 return is_string($input_value);
                 break;
             case 'str':
