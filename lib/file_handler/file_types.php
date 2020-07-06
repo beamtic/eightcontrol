@@ -102,12 +102,12 @@ class file_types
 
         // Text Types
         $this->file_types = array(
-            'txt' => array('content-type' => 'text/plain', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
-            'html' => array('content-type' => 'text/html', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
-            'rss' => array('content-type' => 'text/xml', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
-            'xml' => array('content-type' => 'application/xml', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
-            'xhtml' => array('content-type' => 'application/xhtml+xml', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
-            'css' => array('content-type' => '	text/css', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
+            'txt' => array('content-type' => 'text/plain; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
+            'html' => array('content-type' => 'text/html; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
+            'rss' => array('content-type' => 'text/xml; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
+            'xml' => array('content-type' => 'application/xml; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
+            'xhtml' => array('content-type' => 'application/xhtml+xml; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
+            'css' => array('content-type' => '	text/css; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
         );
         // Images
         $this->file_types = $this->file_types + array(
@@ -115,7 +115,7 @@ class file_types
             'jpeg' => array('content-type' => 'image/jpeg', 'cache-control' => 'max-age=' . $this->max_age_images . ', public', 'accept-ranges' => 'bytes'),
             'png' => array('content-type' => 'image/png', 'cache-control' => 'max-age=' . $this->max_age_images . ', public', 'accept-ranges' => 'bytes'),
             'webp' => array('content-type' => 'image/webp', 'cache-control' => 'max-age=' . $this->max_age_images . ', public', 'accept-ranges' => 'bytes'),
-            'svg' => array('content-type' => 'image/svg+xml', 'cache-control' => 'max-age=' . $this->max_age_images . ', private', 'accept-ranges' => 'bytes'),
+            'svg' => array('content-type' => 'image/svg+xml; charset=utf-8', 'cache-control' => 'max-age=' . $this->max_age_images . ', private', 'accept-ranges' => 'bytes'),
             'gif' => array('content-type' => 'image/gif', 'cache-control' => 'max-age=' . $this->max_age_images . ', private', 'accept-ranges' => 'bytes'),
         );
         // Audio and Video

@@ -32,10 +32,8 @@ class file_handler_factory
      */
     public function build()
     {
-        require $this->base_path . '/lib/file_handler/execption.php';
-
         $superglobals = new \doorkeeper\lib\php_helpers\superglobals();
-        $helpers = new \doorkeeper\lib\php_helpers\php_helpers();
+        $helpers = new \doorkeeper\lib\php_helpers\php_helpers($superglobals);
         $file_types = new \doorkeeper\lib\file_handler\file_types();
 
         return new \doorkeeper\lib\file_handler\file_handler($helpers, $superglobals, $file_types);

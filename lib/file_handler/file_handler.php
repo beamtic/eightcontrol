@@ -3,9 +3,7 @@
 /**
  *           Doorkeeper File Handler
  *
- *                Class to handle creation, editing, and deletion of files and directories with support for locking
- *
- *                The handle_error() function is used to return an error, which can then be handled and translated from the calling location.
+ *                Class to handle creating, editing, and deleting files and directories with support for locking.
  *
  *              write_file() should automatically handle locking, allowing use in some concurrency siturations.
  *              This probably does not work for all applications, but should be enough in many cases.
@@ -16,6 +14,9 @@
 
 namespace doorkeeper\lib\file_handler;
 
+use doorkeeper\lib\php_helpers\{php_helpers, superglobals};
+use doorkeeper\lib\file_handler\exception; // Must be lowercase for the autoloader to work
+
 class file_handler
 {
 
@@ -25,9 +26,11 @@ class file_handler
     private $f_args;
     private $lock_max_time = 20; // File-lock maximum time in seconds.
 
+    private $helpers;
     private $ft; // The $file_types object, used in http_stream_file()
+    private $sg;
 
-    public function __construct(object $helpers, object $superglobals, object $file_types)
+    public function __construct(php_helpers $helpers, superglobals $superglobals, file_types $file_types)
     {
         $this->helpers = $helpers; // Helper methods to solve common programming problems
         $this->ft = $file_types;
@@ -105,7 +108,7 @@ class file_handler
     }
     /**
      *  Method to read a file or the specified parts of it. The default max_line_length is 4096.
-     *
+     *  Note. This function does not call clearstatcache(); do that from the outside if needed!
      *  @param array $arguments_arr path=REQUIRED (string), start_line=0 (int), max_line_length=4096 (int), lines_to_read=false (int)
      *  @return string
      *  @throws Exception on failure.
@@ -120,13 +123,27 @@ class file_handler
         );
         $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
 
-        // Attempt to open file for reading
-        if (($fp = fopen($this->f_args['path'], "r")) == false) {
+        if (false === (file_exists($this->f_args['path']))) {
+            throw new Exception(['code' => 11, 'path' => $this->f_args['path']]);
+        }
+        // Only files should be opened for reading
+        if (false === (is_file($this->f_args['path']))) {
+            throw new Exception(['code' => 15, 'path' => $this->f_args['path']]);
+        }
+        // Note on is_readable(): If a path is a directory, it will result in a false positive, so we need to use is_file() first.
+        // Note on fopen(): In Theory, fopen can fail even if a file is readable;
+        // this might happen if a system has too many open file handles.
+        if (
+            false === (is_readable($this->f_args['path'])) || // Check if the file is readable
+            false === ($fp = fopen($this->f_args['path'], "r")) // Attempt to open the file
+        ) {
             throw new Exception(['code' => 1, 'path' => $this->f_args['path']]);
         }
 
         // Attempt to obtain_lock
-        $this->obtain_lock($fp, true);
+        $this->obtain_lock($fp);
+
+
 
         // Reads entire file until End Of File has been reached
         if ($this->f_args['lines_to_read'] === false) {
@@ -195,13 +212,14 @@ class file_handler
         }
 
         // Attempt to obtain_lock
-        $this->obtain_lock($fp, true);
+        $this->obtain_lock($fp);
+
 
         $lc = 0;
         while (fgets($fp, $this->f_args['max_line_length']) !== false) {
             ++$lc;
         }
-        
+
         // If End Of File was not reached (unexpected at this point)...
         // Note. This chould happen if something interrupts the read process.
         if ((!feof($fp))) {
@@ -242,7 +260,9 @@ class file_handler
         // Attempt to obtain_lock
         $this->obtain_lock($fp);
 
-        if (!fwrite($fp, $this->f_args['content'])) {
+
+        // If 0 bytes is written (!fwrite(...)) will cause an error, hence (false === fwrite(...))
+        if (false === fwrite($fp, $this->f_args['content'])) {
             throw new Exception(['code' => 2, 'path' => $this->f_args['path']]);
         } else {
             fclose($fp);
@@ -388,6 +408,8 @@ class file_handler
         // Variables
         $response_headers = array();
 
+        
+
         // -----------------------
         // Handle the file--------
         // -----------------------
@@ -500,7 +522,7 @@ class file_handler
             // WARNING:
             // * In regards to this loop and calling fread inside a loop. *
             // The error supression of fread is intentional.
-            // Without the supression, we risk filling up all available disk space
+            // Without the supression we risk filling up all available disk space
             // with error logging on some servers - in mere seconds!!
             // While the specific obtain_lock() error should be fixed, the supression
             // was left in place just to be safe..
@@ -510,4 +532,6 @@ class file_handler
         fclose($fp);
         exit();
     }
+
+    use \doorkeeper\lib\class_traits\no_set;
 }
