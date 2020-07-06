@@ -14,6 +14,7 @@ use Exception;
 
 class php_helpers
 {
+
     /**
      * Method to validate $input_arguments, and compare with $defined_arguments.
      * The input arguments are valid if the function is not interrupted.
@@ -40,8 +41,8 @@ class php_helpers
                 }
                 if (!$this->type_check($value, $defined_arguments["$key"]['type'])) {
                     throw new \Exception(
-                        'Invalid input type for: ' . $key . "\n"
-                        . 'Expected ' . $defined_arguments["$key"]['type'] . ', ' . gettype($value) . ' given.'
+                        'Invalid input type for: "' . $key
+                            . '" Expected ' . $defined_arguments["$key"]['type'] . ', ' . gettype($value) . ' given.'
                     );
                 }
                 // In case value was an array, make sure to add possible default elements.
@@ -88,6 +89,7 @@ class php_helpers
      */
     public function type_check($input_value, $defined_type)
     {
+        // Note. It seems to have been determined that If statements are more efficient than switch - should we change this?
         switch ($defined_type) {
             case 'string':
 
@@ -142,6 +144,7 @@ class php_helpers
         $new_array = array();
 
         foreach ($array as $key => $value) {
+            $last = false;
             if ($key !== $selected_key) {
                 $new_array["$key"] = $value;
                 $last = array('key' => $key, 'value' => $value);
@@ -187,4 +190,5 @@ class php_helpers
     {
         return count(preg_split('//u', $string, -1, PREG_SPLIT_NO_EMPTY));
     }
+    use \doorkeeper\lib\class_traits\no_set;
 }
