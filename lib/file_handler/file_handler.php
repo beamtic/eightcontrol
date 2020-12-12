@@ -129,7 +129,7 @@ class file_handler
         }
 
         // Attempt to obtain_lock
-        $this->obtain_lock($fp, false, $path);
+        $this->obtain_lock($fp, $path);
 
         // Reads entire file until End Of File has been reached
         if ($lines_to_read === null) {
@@ -180,7 +180,7 @@ class file_handler
      *  @return int
      *  @throws Exception on failure.
      */
-    public function count_lines(string $path)
+    public function count_lines(string $path, int $max_line_length = 4096)
     {
         // It may be nessecery to count the lines in very large files, so we can read the file, say, 100 lines at a time.
         // Note. Any file-lock should be obtained outside this method, to prevent writing to a file while we are counting the lines in it
@@ -191,7 +191,7 @@ class file_handler
         }
 
         // Attempt to obtain_lock
-        $this->obtain_lock($fp, false, $path);
+        $this->obtain_lock($fp, $path);
 
 
         $lc = 0;
@@ -229,7 +229,7 @@ class file_handler
         }
 
         // Attempt to obtain_lock
-        $this->obtain_lock($fp, false, $path);
+        $this->obtain_lock($fp, $path);
 
 
         // If 0 bytes is written (!fwrite(...)) will cause an error, hence (false === fwrite(...))
@@ -309,7 +309,7 @@ class file_handler
      *   @return true
      *   @throws Exception on failure.
      */
-    public function obtain_lock($fp, $LOCK_SH = false, string $path)
+    public function obtain_lock($fp, string $path, $LOCK_SH = false)
     {
         // Add the right bitmask for use with flock
         if ($LOCK_SH === true) {
@@ -387,7 +387,7 @@ class file_handler
         }
 
         // If file was successfully opened, attempt to obtain_lock
-        $lock_status = $this->obtain_lock($fp, true, $path);
+        $lock_status = $this->obtain_lock($fp, $path, true);
 
         // -----------------------
         // Handle "range" requests
