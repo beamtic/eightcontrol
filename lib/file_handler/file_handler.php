@@ -5,7 +5,7 @@
  *
  *                Class to handle creating, editing, and deleting files and directories with support for locking.
  *
- *              write_file() should automatically handle locking, allowing use in some concurrency siturations.
+ *              write_file() should automatically handle locking, allowing use in some concurrency situations.
  *              This probably does not work for all applications, but should be enough in many cases.
  *              You may want to use a database for "heavy" load applications.
  *
@@ -14,25 +14,21 @@
 
 namespace doorkeeper\lib\file_handler;
 
-use doorkeeper\lib\php_helpers\{php_helpers, superglobals};
+use doorkeeper\lib\php_helpers\{superglobals};
 use doorkeeper\lib\file_handler\exception; // Must be lowercase for the autoloader to work
 
 class file_handler
 {
 
     private $additional_error_data = array();
-    // private $helpers; // The $helpers object
 
-    private $f_args;
     private $lock_max_time = 20; // File-lock maximum time in seconds.
 
-    private $helpers;
     private $ft; // The $file_types object, used in http_stream_file()
     private $sg;
 
-    public function __construct(php_helpers $helpers, superglobals $superglobals, file_types $file_types)
+    public function __construct(superglobals $superglobals, file_types $file_types)
     {
-        $this->helpers = $helpers; // Helper methods to solve common programming problems
         $this->ft = $file_types;
         $this->sg = $superglobals;
     }
@@ -113,44 +109,34 @@ class file_handler
      *  @return string
      *  @throws Exception on failure.
      */
-    public function read_file_lines(array $arguments_arr)
+    public function read_file_lines(string $path, int $start_line = 0, int $max_line_length = 4096, int $lines_to_read = null)
     {
-        $default_argument_values_arr = array(
-            'path' => ['type' => 'string', 'required' => true],
-            'start_line' => ['default' => 0, 'type' => 'int', 'required' => false],
-            'max_line_length' => ['default' => 4096, 'type' => 'int', 'required' => false],
-            'lines_to_read' => ['default' => false, 'type' => 'int', 'required' => false],
-        );
-        $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
-
-        if (false === (file_exists($this->f_args['path']))) {
-            throw new Exception(['code' => 11, 'path' => $this->f_args['path']]);
+        if (false === (file_exists($path))) {
+            throw new Exception(['code' => 11, 'path' => $path]);
         }
         // Only files should be opened for reading
-        if (false === (is_file($this->f_args['path']))) {
-            throw new Exception(['code' => 15, 'path' => $this->f_args['path']]);
+        if (false === (is_file($path))) {
+            throw new Exception(['code' => 15, 'path' => $path]);
         }
         // Note on is_readable(): If a path is a directory, it will result in a false positive, so we need to use is_file() first.
         // Note on fopen(): In Theory, fopen can fail even if a file is readable;
         // this might happen if a system has too many open file handles.
         if (
-            false === (is_readable($this->f_args['path'])) || // Check if the file is readable
-            false === ($fp = fopen($this->f_args['path'], "r")) // Attempt to open the file
+            false === (is_readable($path)) || // Check if the file is readable
+            false === ($fp = fopen($path, "r")) // Attempt to open the file
         ) {
-            throw new Exception(['code' => 1, 'path' => $this->f_args['path']]);
+            throw new Exception(['code' => 1, 'path' => $path]);
         }
 
         // Attempt to obtain_lock
-        $this->obtain_lock($fp);
-
-
+        $this->obtain_lock($fp, false, $path);
 
         // Reads entire file until End Of File has been reached
-        if ($this->f_args['lines_to_read'] === false) {
+        if ($lines_to_read === null) {
             $lc = 1;
             $file_content = '';
-            while (($buffer = fgets($fp, $this->f_args['max_line_length'])) !== false) {
-                if ($lc >= $this->f_args['start_line']) {
+            while (($buffer = fgets($fp, $max_line_length)) !== false) {
+                if ($lc >= $start_line) {
                     $file_content .= $buffer;
                 }
                 ++$lc;
@@ -159,16 +145,16 @@ class file_handler
             $file_content = '';
             $i = 0;
             $lc = 1;
-            $lines_to_read = $this->f_args['lines_to_read'] + $this->f_args['start_line'];
+            $lines_to_read = $lines_to_read + $start_line;
             while ($i < $lines_to_read) {
-                if ($lc > $this->f_args['start_line']) {
+                if ($lc > $start_line) {
                     // fgets (read a single line)
-                    if (($file_content .= fgets($fp, $this->f_args['max_line_length'])) === false) {
-                        throw new Exception(['code' => 14, 'path' => $this->f_args['path']]);
+                    if (($file_content .= fgets($fp, $max_line_length)) === false) {
+                        throw new Exception(['code' => 14, 'path' => $path]);
                     }
                 } else {
-                    if (fgets($fp, $this->f_args['max_line_length']) === false) {
-                        throw new Exception(['code' => 14, 'path' => $this->f_args['path']]);
+                    if (fgets($fp, $max_line_length) === false) {
+                        throw new Exception(['code' => 14, 'path' => $path]);
                     }
                 } // Just move the position indicator without saving the read data
                 ++$i;
@@ -179,9 +165,9 @@ class file_handler
         // Note. This chould happen if something interrupts the read process.
         // Note. 2. If "lines_to_read" is used, EOF (feof) is not relevant, since
         //          it will probably never be reached anyway.
-        if ((!feof($fp)) && ($this->f_args['lines_to_read'] === false)) {
+        if ((!feof($fp)) && ($lines_to_read === false)) {
             fclose($fp);
-            throw new Exception(['code' => 4, 'path' => $this->f_args['path']]);
+            throw new Exception(['code' => 4, 'path' => $path]);
         }
         fclose($fp); // Closing after successful operation
         return $file_content;
@@ -194,29 +180,22 @@ class file_handler
      *  @return int
      *  @throws Exception on failure.
      */
-    public function count_lines(array $arguments_arr)
+    public function count_lines(string $path)
     {
         // It may be nessecery to count the lines in very large files, so we can read the file, say, 100 lines at a time.
         // Note. Any file-lock should be obtained outside this method, to prevent writing to a file while we are counting the lines in it
-        $default_argument_values_arr = array(
-            'path' => ['type' => 'string', 'required' => true],
-            'start_line' => ['default' => 0, 'type' => 'int', 'required' => false],
-            'max_line_length' => ['default' => 4096, 'type' => 'int', 'required' => false],
-            'lines_to_read' => ['default' => false, 'type' => 'int', 'required' => false],
-        );
-        $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
 
         // Attempt to open the file for reading
-        if (($fp = @fopen($this->f_args['path'], "r")) === false) {
-            throw new Exception(['code' => 1, 'path' => $this->f_args['path']]);
+        if (($fp = @fopen($path, "r")) === false) {
+            throw new Exception(['code' => 1, 'path' => $path]);
         }
 
         // Attempt to obtain_lock
-        $this->obtain_lock($fp);
+        $this->obtain_lock($fp, false, $path);
 
 
         $lc = 0;
-        while (fgets($fp, $this->f_args['max_line_length']) !== false) {
+        while (fgets($fp, $max_line_length) !== false) {
             ++$lc;
         }
 
@@ -224,7 +203,7 @@ class file_handler
         // Note. This chould happen if something interrupts the read process.
         if ((!feof($fp))) {
             fclose($fp);
-            throw new Exception(['code' => 4, 'path' => $this->f_args['path']]);
+            throw new Exception(['code' => 4, 'path' => $path]);
         }
         fclose($fp); // Closing after a successful execution
         return $lc; // Return the Line Number
@@ -234,40 +213,32 @@ class file_handler
      *
      *  A file lock should automatically be obtained, ideal in concurrency siturations.
      *
-     *  @param array $arguments_arr path=REQUIRED (string), content='' (string), mode=w (string)
      *  @return true
      *  @throws Exception on failure.
      */
-    public function write_file(array $arguments_arr)
+    public function write_file(string $path, string $content = '', int $permissions = 0775, string $mode = 'w')
     {
-        $default_argument_values_arr = array(
-            'path' => ['required' => true, 'type' => 'string'],
-            'content' => ['required' => false, 'type' => 'string', 'default' => ''],
-            'permissions' => ['required' => 'false', 'type' => 'int', 'default' => 0775],
-            'mode' => ['required' => false, 'type' => 'string', 'default' => 'w'], // w = open for writing, truncates the file, and attempts to create the file if it does not exist.
-        );
-        $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
 
         $this->additional_error_data = array(
             'source' => __METHOD__, // The class and method name where the error occured
         );
 
         // Attempt to open the file
-        if (($fp = @fopen($this->f_args['path'], $this->f_args['mode'])) === false) {
-            throw new Exception(['action' => 'fopen', 'path' => $this->f_args['path']]);
+        if (($fp = @fopen($path, $mode)) === false) {
+            throw new Exception(['action' => 'fopen', 'path' => $path]);
         }
 
         // Attempt to obtain_lock
-        $this->obtain_lock($fp);
+        $this->obtain_lock($fp, false, $path);
 
 
         // If 0 bytes is written (!fwrite(...)) will cause an error, hence (false === fwrite(...))
-        if (false === fwrite($fp, $this->f_args['content'])) {
-            throw new Exception(['code' => 2, 'path' => $this->f_args['path']]);
+        if (false === fwrite($fp, $content)) {
+            throw new Exception(['code' => 2, 'path' => $path]);
         } else {
             fclose($fp);
             // We should also update file permissions after creating the file
-            chmod($this->f_args['path'], $this->f_args['permissions']);
+            chmod($path, $permissions);
             return true;
         } // fclose also releases the file lock
     }
@@ -278,28 +249,21 @@ class file_handler
      *   @return true
      *   @throws Exception on failure.
      */
-    public function create_directory(array $arguments_arr)
+    public function create_directory(string $path, string $base_path, int $permissions = 0775)
     {
-        $default_argument_values_arr = array(
-            'path' => ['required' => true, 'type' => 'string'],
-            'base_path' => ['required' => false, 'type' => 'string'],
-            'permissions' => ['required' => 'false', 'type' => 'int', 'default' => 0775], // This should be an int value!
-        );
-        $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
-
         // If base_path is defined, subtract base_path from the path array
         // To get a list of directories we need to make
         // Note. This step is important in order to correctly set permissions recursively on the directories
-        if (isset($this->f_args['base_path'])) {
+        if (isset($base_path)) {
             // Create an array containing directories found in the path and base_path
-            $path_arr = explode('/', trim($this->f_args['path'], '/'));
-            $base_path_arr = explode('/', trim($this->f_args['base_path'], '/'));
+            $path_arr = explode('/', trim($path, '/'));
+            $base_path_arr = explode('/', trim($base_path, '/'));
             // Find out how many directories should be created
             $dirs_from_base_arr = array_diff_key($path_arr, $base_path_arr);
             $dirs_to_make_arr = array();
 
             // Add the base_path to the $dir_path string
-            $dir_path = $this->f_args['base_path'];
+            $dir_path = $base_path;
             foreach ($dirs_from_base_arr as $dir) {
                 $dir_path .= $dir . '/';
                 // If the $dir_path did not exist, queue it for creation
@@ -311,12 +275,12 @@ class file_handler
             // If base_path was not defined, we compromise by
             // only setting permissions on the last directory found in the path—
             // this will often be sufficient anyway!
-            $dirs_to_make_arr[] = $this->f_args['path'];
+            $dirs_to_make_arr[] = $path;
         }
 
         // Check if there's anything to create
         if (count($dirs_to_make_arr) < 1) {
-            throw new Exception(['code' => 9, 'path' => $this->f_args['path']]);
+            throw new Exception(['code' => 9, 'path' => $path]);
         }
 
 
@@ -326,13 +290,13 @@ class file_handler
             // since we only care if the action failed or not at this point.
             // If the action failed, it will most likely be due to permissions.
             // Subdirectories will be created recursively if present.
-            if (!@mkdir($dir, $this->f_args['permissions'], false)) { // Bug? Perform chmod after!
-                throw new Exception(['code' => 3, 'path' => $this->f_args['path']]);
+            if (!@mkdir($dir, $permissions, false)) { // Bug? Perform chmod after!
+                throw new Exception(['code' => 3, 'path' => $path]);
             }
             // An apparent bug in PHPs mkdir() is causing directories to be made with
             // wrong permissions. Performing a chmod after creating the directory seems to solve this problem
             // - has this issue been reported to developers of PHP?
-            chmod($dir, $this->f_args['permissions']);
+            chmod($dir, $permissions);
         }
         // If all directories was created successfully return true
         return true;
@@ -345,7 +309,7 @@ class file_handler
      *   @return true
      *   @throws Exception on failure.
      */
-    public function obtain_lock($fp, $LOCK_SH = false)
+    public function obtain_lock($fp, $LOCK_SH = false, string $path)
     {
         // Add the right bitmask for use with flock
         if ($LOCK_SH === true) {
@@ -353,14 +317,14 @@ class file_handler
         } else {
             $lock_type = LOCK_EX | LOCK_NB;
         }
-        if (!is_writable($this->f_args['path'])) {
-            throw new Exception(['code' => 5, 'path' => $this->f_args['path']]);
+        if (!is_writable($path)) {
+            throw new Exception(['code' => 5, 'path' => $path]);
         }
         $i = 0;
         while (!flock($fp, $lock_type)) {
             ++$i;
             if (($i == $this->lock_max_time)) {
-                throw new Exception(['code' => 7, 'path' => $this->f_args['path']]);
+                throw new Exception(['code' => 7, 'path' => $path]);
             }
             $rand = rand(100, 1000);
             usleep($rand * 1000); // nanoseconds->milliseconds
@@ -387,18 +351,11 @@ class file_handler
      * "range" requests are supported, making it possible to stream audio and video files from PHP.
      * This function exits() on success, and outputs an error array on failure.
      * error 1 = failed to open file. error 11 = file did not exist
-     * @param array $arguments_arr
      * @throws Exception on failure.
      * 
      */
-    public function http_stream_file(array $arguments_arr)
+    public function http_stream_file(string $path, int $chunk_size = 8192)
     {
-        $default_argument_values_arr = array(
-            'path' => ['required' => true, 'type' => 'string'],
-            'chunk_size' => ['required' => false, 'type' => 'int', 'default' => 8192],
-        );
-        $this->f_args = $this->helpers->handle_arguments($arguments_arr, $default_argument_values_arr);
-
         // If an error occurs...
         $this->additional_error_data = array(
             'source' => __METHOD__,
@@ -413,12 +370,12 @@ class file_handler
         // -----------------------
         // Handle the file--------
         // -----------------------
-        if (!file_exists($this->f_args['path'])) {
+        if (!file_exists($path)) {
             // The file did not exist, handle the error elsewhere
-            throw new Exception(['code' => 11, 'path' => $this->f_args['path']]);
+            throw new Exception(['code' => 11, 'path' => $path]);
         }
         if (($file_size = filesize($this->f_args['path'])) === false) {
-            throw new Exception(['code' => 12, 'path' => $this->f_args['path']]);
+            throw new Exception(['code' => 12, 'path' => $path]);
         }
 
         $start = 0;
@@ -426,11 +383,11 @@ class file_handler
 
         // Attempt to Open file for (r) reading (b=binary safe)
         if (($fp = @fopen($this->f_args['path'], 'rb')) == false) {
-            throw new Exception(['code' => 1, 'path' => $this->f_args['path']]);
+            throw new Exception(['code' => 1, 'path' => $path]);
         }
 
         // If file was successfully opened, attempt to obtain_lock
-        $lock_status = $this->obtain_lock($fp, true);
+        $lock_status = $this->obtain_lock($fp, true, $path);
 
         // -----------------------
         // Handle "range" requests
@@ -497,8 +454,8 @@ class file_handler
         }
 
         // Get additional headers for the requested file-type
-        if (($extension = $this->ft->has_extension($this->f_args['path'])) === false) {
-            throw new Exception(['code' => 13, 'path' => $this->f_args['path']]);
+        if (($extension = $this->ft->has_extension($path)) === false) {
+            throw new Exception(['code' => 13, 'path' => $path]);
         }
 
         $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
