@@ -26,6 +26,7 @@ class php_helpers
      */
     public function handle_arguments($input_arguments, $defined_arguments)
     {
+        trigger_error('PHP8.0 added support for named parameters, so this is no longer needed, and will be removed soon.', E_USER_DEPRECATED);
         // Check if parameter is defined, and validate the type (if provided)
         foreach ($input_arguments as $key => $value) {
             if (!isset($defined_arguments["$key"])) {
@@ -87,12 +88,10 @@ class php_helpers
      * @param string $defined_type The type to check for.
      * @return boolean true when input type matched defined type, false otherwise.
      */
-    public function type_check($input_value, $defined_type)
+    public function type_check($input_value, string $defined_type)
     {
-        // Note. It seems to have been determined that If statements are more efficient than switch - should we change this?
         switch ($defined_type) {
             case 'string':
-
                 return is_string($input_value);
                 break;
             case 'str':
