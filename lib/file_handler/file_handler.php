@@ -249,12 +249,12 @@ class file_handler
      *   @return true
      *   @throws Exception on failure.
      */
-    public function create_directory(string $path, string $base_path, int $permissions = 0775)
+    public function create_directory(string $path, string $base_path = null, int $permissions = 0775)
     {
         // If base_path is defined, subtract base_path from the path array
         // To get a list of directories we need to make
         // Note. This step is important in order to correctly set permissions recursively on the directories
-        if (isset($base_path)) {
+        if (null !== $base_path) {
             // Create an array containing directories found in the path and base_path
             $path_arr = explode('/', trim($path, '/'));
             $base_path_arr = explode('/', trim($base_path, '/'));
