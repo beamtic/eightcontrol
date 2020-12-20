@@ -359,7 +359,7 @@ class file_handler
         // If an error occurs...
         $this->additional_error_data = array(
             'source' => __METHOD__,
-            'chunk_size' => $this->f_args['chunk_size'],
+            'chunk_size' => $chunk_size,
         );
 
         // Variables
@@ -374,7 +374,7 @@ class file_handler
             // The file did not exist, handle the error elsewhere
             throw new Exception(['code' => 11, 'path' => $path]);
         }
-        if (($file_size = filesize($this->f_args['path'])) === false) {
+        if (($file_size = filesize($path)) === false) {
             throw new Exception(['code' => 12, 'path' => $path]);
         }
 
@@ -382,7 +382,7 @@ class file_handler
         $end = $file_size - 1; // Minus 1 (Byte ranges are zero-indexed)
 
         // Attempt to Open file for (r) reading (b=binary safe)
-        if (($fp = @fopen($this->f_args['path'], 'rb')) == false) {
+        if (($fp = @fopen($path, 'rb')) == false) {
             throw new Exception(['code' => 1, 'path' => $path]);
         }
 
@@ -437,7 +437,7 @@ class file_handler
         // and compare with the "if-modified-since" request header (if present)
         $if_modified_since = $this->sg->get_SERVER('HTTP_IF_MODIFIED_SINCE');
 
-        if (($timestamp = filemtime($this->f_args['path'])) !== false) {
+        if (($timestamp = filemtime($path)) !== false) {
             $response_headers['last-modified'] = gmdate("D, d M Y H:i:s", $timestamp) . ' GMT';
             if ((isset($if_modified_since)) && ($if_modified_since == $response_headers['last-modified'])) {
                 http_response_code(304); // Not Modified
@@ -467,7 +467,7 @@ class file_handler
         // ---------------------
         // Start the file output
         // ---------------------
-        $buffer = $this->f_args['chunk_size'];
+        $buffer = $chunk_size;
         while (!feof($fp) && ($pointer = ftell($fp)) <= $end) {
 
             // If next $buffer will pass $end,
