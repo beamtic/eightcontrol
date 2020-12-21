@@ -176,11 +176,12 @@ class file_handler
      *  Method to count the lines in files, useful if you want to read a file x lines at a time
      *  within a loop. Also useful to count the lines in your source code.
      *
-     *  @param array $arguments_arr path=REQUIRED (string), start_line=0 (int), max_line_length=4096 (int), lines_to_read=false (int)
-     *  @return int
+     *  Returns the line count as an int, or an array of int's if $string_to_search_for is used.
+     * 
+     *  
      *  @throws Exception on failure.
      */
-    public function count_lines(string $path, int $max_line_length = 4096)
+    public function count_lines(string $path, int $max_line_length = 4096, string $search_string = null)
     {
         // It may be nessecery to count the lines in very large files, so we can read the file, say, 100 lines at a time.
         // Note. Any file-lock should be obtained outside this method, to prevent writing to a file while we are counting the lines in it
@@ -193,10 +194,20 @@ class file_handler
         // Attempt to obtain_lock
         $this->obtain_lock($fp, $path);
 
-
+        // If we are supposed to return the line number where a given string occurs
         $lc = 0;
-        while (fgets($fp, $max_line_length) !== false) {
-            ++$lc;
+        if (null !== $search_string) {
+            $line_occurrences = [];
+            while (($line = fgets($fp, $max_line_length)) !== false) {
+                if (strpos($line, $search_string) !== false) {
+                    $line_occurrences[] = $lc;
+                }
+                ++$lc;
+            }
+        } else {
+            while (fgets($fp, $max_line_length) !== false) {
+                ++$lc;
+            }
         }
 
         // If End Of File was not reached (unexpected at this point)...
@@ -206,7 +217,9 @@ class file_handler
             throw new Exception(['code' => 4, 'path' => $path]);
         }
         fclose($fp); // Closing after a successful execution
-        return $lc; // Return the Line Number
+
+        // Return the Line Number or array of line numbers
+        return (isset($line_occurrences)) ? $line_occurrences : $lc;
     }
     /**
      *  Method to write to the filesystem.
@@ -345,6 +358,15 @@ class file_handler
         }
         return $read_setting;
     }
+    /**
+     * Method to scan a directory and return the result as an array.
+     */
+    public function scan_dir(string $path_to_dir)
+    {
+        $items_arr = scandir($path_to_dir);
+        // Make sure to remove "." and ".." since they are not needed.
+        return is_array($items_arr) ? array_diff($items_arr, [".", ".."]) : false;
+    }
 
     /**
      * Method to "stream" a file over HTTP in response to a client request.
@@ -365,7 +387,7 @@ class file_handler
         // Variables
         $response_headers = array();
 
-        
+
 
         // -----------------------
         // Handle the file--------
