@@ -21,13 +21,17 @@ class line_counter
     public $total_lines_counted;
     // Will contain file names with line counts
     public array $files_with_line_count = [];
+    // List of files and directories to ignore, absolute paths only
+    // Array structure example: [
+    //  '/var/www/some-directory-to-ignore',
+    //  '/bar/www/some-file.php'
+    //  ] 
     private array $ignore_list = [];
 
 
-    public function __construct(file_handler $file_handler, string $base_path)
+    public function __construct(file_handler $file_handler)
     {
         $this->fh = $file_handler;
-        $this->ignore_list = [];
     }
 
     /**
@@ -109,7 +113,7 @@ class line_counter
      * Method to add an item to the ignore list.
      * If the path is a directory, the entire sub-contents will also be ignored.
      */
-    public function ignore_object(string $path) {
+    public function ignore(string $path) {
       $this->ignore_list[] = $path;
     }
 }
