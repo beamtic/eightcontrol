@@ -14,32 +14,32 @@
 // ********************
 // Composition Root****
 // ********************
-
-// Remove trailing slashes (if present), and add one manually.
-// Note: This avoids a problem where some servers might add a trailing slash, and others not..
-define('BASE_PATH', rtrim(realpath('../../../'), "/") . '/');
-
-// Class autoloader
-require BASE_PATH . 'shared/header.php';
-
-// Required helper methods
-$helpersObj = new \doorkeeper\lib\php_helpers\php_helpers();
+// Include the File Handler, or use an autoloader
+// Normally you would probably use an absolute path instead of a relative.
+//   Read: https://beamtic.com/including-files-via-base-path
+require '../../class_traits/no_set.php';
+require '../file_handler.php';
 
 // File handler to Write and Read files
-$fileHandlerObj = new \doorkeeper\lib\file_handler\file_handler($helpersObj);
+$fh = new \doorkeeper\lib\file_handler\file_handler();
 
 // Absolute path to file
-$fileHandlerObj->f_args['path'] = BASE_PATH . 'writer.txt';
+$path = 'writer.txt';
 
-$fp = @fopen($fileHandlerObj->f_args['path'], "r");
+$fp = @fopen($path, "r");
 
-$response = $fileHandlerObj->obtain_lock($fp); // Try to obtain file lock
 
-if (isset($response['error'])) {
-    // If there was an error, handle it here
-    print_r($response);exit();
-} else {
-    // Perform action'(s) on file
+
+try {
+    $status = $fh->obtain_lock($fp, $path); // Try to obtain file lock
+} catch (Exception $e) {
+    echo $e->getMessage();
 }
+
+if ($status) {
+    echo 'Lock obtained successfully!';
+    exit();
+}
+
 
 sleep(25); // Sleep 25 secs.. This allows us to test if a file-lock is working as intended by running the script a second time.
