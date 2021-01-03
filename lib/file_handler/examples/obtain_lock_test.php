@@ -34,9 +34,13 @@ try {
     $fh->obtain_lock($fp, $path); // Try to obtain file lock
 } catch (Exception $e) {
     echo $e->getMessage();
+    exit();
 }
 
 echo 'Lock obtained successfully!';
 
-
-sleep(25); // Sleep 25 secs.. This allows us to test if a file-lock is working as intended by running the script a second time.
+// Sleep 25 secs..
+// Run 2 instances of the script at the same time, and one should fail to get a lock.
+// Note. The maximum time to wait for a lock is defined in "lock_max_time" of the file handler.
+// A script will not ba able to obtain a lock until an existing lock has been released.
+sleep(25);
