@@ -15,19 +15,39 @@
 namespace doorkeeper\lib\file_handler;
 
 use doorkeeper\lib\php_helpers\{superglobals};
-use doorkeeper\lib\file_handler\exception; // Must be lowercase for the autoloader to work
+use Exception;
 
 class file_handler
 {
 
-    private $additional_error_data = array();
+    private $error_messages = [
+        1 => 'Failed to open file.',
+        2 => 'Failed to create or write file.',
+        3 => 'Failed to create directory.',
+        4 => 'Unexpected fgets() fail after reading from file.',
+        5 => 'The file or directory is not writeable.',
+        6 => 'Unable to write to file, but the file is writable.',
+        7 => 'Unable to obtain file lock (timeout reached).',
+        8 => 'Unable to unlink file (possible race condition).',
+        9 => 'File or directory already exists.',
+        10 => 'Unable to remove directory.',
+        11 => 'The file did not exist.',
+        12 => 'Unexpected filesize() fail.',
+        13 => 'The file path had no file extension.',
+        14 => 'Failed to read line in file. This can happen if the process was interrupted.',
+        15 => 'Failed to open file. The supplied path is not a file.',
+        16 => 'Missing required dependencies, please check that everything was supplied.',
+        17 => 'Unable to open remote resource.',
+    ];
+
+    private $http_user_agent = '';
 
     private $lock_max_time = 20; // File-lock maximum time in seconds.
 
     private $ft; // The $file_types object, used in http_stream_file()
     private $sg;
 
-    public function __construct(superglobals $superglobals, file_types $file_types)
+    public function __construct(superglobals $superglobals = null, file_types $file_types = null)
     {
         $this->ft = $file_types;
         $this->sg = $superglobals;
@@ -41,16 +61,16 @@ class file_handler
      */
     public function simple_delete(string $file_or_dir)
     {
-        $this->additional_error_data = array('source' => __METHOD__); // Source = class and method name where the error occured
-
         if (!is_writable($this->f_args['path'])) {
-            throw new Exception(['code' => 5, 'path' => $this->f_args['path']]);
+            $e_msg = $this->error_messages["5"] . ' @' . $this->f_args['path'] . ' ';
+            throw new Exception($e_msg, 5);
         }
         // If not dealing with a directory
         if (!is_dir($file_or_dir)) {
             // If unlink failed, possibly due to a race condition, return an error
             if (!unlink($file_or_dir)) {
-                throw new Exception(['code' => 8, 'path' => $file_or_dir]);
+                $e_msg = $this->error_messages["8"] . ' @' . $file_or_dir . ' ';
+                throw new Exception($e_msg, 8);
             }
         }
 
@@ -66,16 +86,19 @@ class file_handler
             } else {
                 // Check for write permissions
                 if (!is_writable($file_or_dir . '/' . $object)) {
-                    throw new Exception(['code' => 5, 'path' => $file_or_dir . '/' . $object]);
+                    $e_msg = $this->error_messages["5"] . ' @' . $file_or_dir . '/' . $object . ' ';
+                    throw new Exception($e_msg, 5);
                 }
                 // If unlink failed, possibly due to a race condition, return an error
                 if (!unlink($file_or_dir . '/' . $object)) {
-                    throw new Exception(['code' => 8, 'path' => $file_or_dir . '/' . $object]);
+                    $e_msg = $this->error_messages["8"] . ' @' . $file_or_dir . '/' . $object . ' ';
+                    throw new Exception($e_msg, 8);
                 }
             }
         }
         if (!rmdir($file_or_dir)) {
-            throw new Exception(['code' => 10, 'path' => $file_or_dir . '/' . $object]);
+            $e_msg = $this->error_messages["10"] . ' @' . $file_or_dir . '/' . $object . ' ';
+            throw new Exception($e_msg, 10);
         } // Delete directory
         return true; // Return true on success
     }
@@ -96,7 +119,8 @@ class file_handler
             if (is_file($file)) {
                 if (!unlink($file)) {
                     // If unlink failed, possibly due to a race condition, return an error
-                    throw new Exception(['code' => 8, 'path' => $directory . '/' . $file]);
+                    $e_msg = $this->error_messages["8"] . ' @' . $directory . '/' . $file . ' ';
+                    throw new Exception($e_msg, 8);
                 }
             }
         }
@@ -112,11 +136,13 @@ class file_handler
     public function read_file_lines(string $path, int $start_line = 0, int $max_line_length = 4096, int $lines_to_read = null)
     {
         if (false === (file_exists($path))) {
-            throw new Exception(['code' => 11, 'path' => $path]);
+            $e_msg = $this->error_messages["11"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 11);
         }
         // Only files should be opened for reading
         if (false === (is_file($path))) {
-            throw new Exception(['code' => 15, 'path' => $path]);
+            $e_msg = $this->error_messages["15"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 15);
         }
         // Note on is_readable(): If a path is a directory, it will result in a false positive, so we need to use is_file() first.
         // Note on fopen(): In Theory, fopen can fail even if a file is readable;
@@ -125,7 +151,8 @@ class file_handler
             false === (is_readable($path)) || // Check if the file is readable
             false === ($fp = fopen($path, "r")) // Attempt to open the file
         ) {
-            throw new Exception(['code' => 1, 'path' => $path]);
+            $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 1);
         }
 
         // Attempt to obtain_lock
@@ -150,11 +177,13 @@ class file_handler
                 if ($lc > $start_line) {
                     // fgets (read a single line)
                     if (($file_content .= fgets($fp, $max_line_length)) === false) {
-                        throw new Exception(['code' => 14, 'path' => $path]);
+                        $e_msg = $this->error_messages["14"] . ' @' . $path . ' ';
+                        throw new Exception($e_msg, 14);
                     }
                 } else {
                     if (fgets($fp, $max_line_length) === false) {
-                        throw new Exception(['code' => 14, 'path' => $path]);
+                        $e_msg = $this->error_messages["14"] . ' @' . $path . ' ';
+                        throw new Exception($e_msg, 14);
                     }
                 } // Just move the position indicator without saving the read data
                 ++$i;
@@ -167,7 +196,8 @@ class file_handler
         //          it will probably never be reached anyway.
         if ((!feof($fp)) && ($lines_to_read === false)) {
             fclose($fp);
-            throw new Exception(['code' => 4, 'path' => $path]);
+            $e_msg = $this->error_messages["4"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 4);
         }
         fclose($fp); // Closing after successful operation
         return $file_content;
@@ -176,7 +206,7 @@ class file_handler
      *  Method to count the lines in files, useful if you want to read a file x lines at a time
      *  within a loop. Also useful to count the lines in your source code.
      *
-     *  Returns the line count as an int, or an array of int's if $string_to_search_for is used.
+     *  Returns the line count as an int, or an array of int's if $search_string is used.
      * 
      *  
      *  @throws Exception on failure.
@@ -188,7 +218,8 @@ class file_handler
 
         // Attempt to open the file for reading
         if (($fp = @fopen($path, "r")) === false) {
-            throw new Exception(['code' => 1, 'path' => $path]);
+            $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 1);
         }
 
         // Attempt to obtain_lock
@@ -214,7 +245,8 @@ class file_handler
         // Note. This chould happen if something interrupts the read process.
         if ((!feof($fp))) {
             fclose($fp);
-            throw new Exception(['code' => 4, 'path' => $path]);
+            $e_msg = $this->error_messages["4"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 4);
         }
         fclose($fp); // Closing after a successful execution
 
@@ -229,16 +261,12 @@ class file_handler
      *  @return true
      *  @throws Exception on failure.
      */
-    public function write_file(string $path, string $content = '', int $permissions = 0775, string $mode = 'w')
+    public function write_file(string $path, string $content = '', string $mode = 'w', int $permissions = 0775)
     {
-
-        $this->additional_error_data = array(
-            'source' => __METHOD__, // The class and method name where the error occured
-        );
-
         // Attempt to open the file
         if (($fp = @fopen($path, $mode)) === false) {
-            throw new Exception(['action' => 'fopen', 'path' => $path]);
+            $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 1);
         }
 
         // Attempt to obtain_lock
@@ -247,7 +275,8 @@ class file_handler
 
         // If 0 bytes is written (!fwrite(...)) will cause an error, hence (false === fwrite(...))
         if (false === fwrite($fp, $content)) {
-            throw new Exception(['code' => 2, 'path' => $path]);
+            $e_msg = $this->error_messages["2"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 2);
         } else {
             fclose($fp);
             // We should also update file permissions after creating the file
@@ -293,7 +322,8 @@ class file_handler
 
         // Check if there's anything to create
         if (count($dirs_to_make_arr) < 1) {
-            throw new Exception(['code' => 9, 'path' => $path]);
+            $e_msg = $this->error_messages["9"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 9);
         }
 
 
@@ -304,7 +334,8 @@ class file_handler
             // If the action failed, it will most likely be due to permissions.
             // Subdirectories will be created recursively if present.
             if (!@mkdir($dir, $permissions, false)) { // Bug? Perform chmod after!
-                throw new Exception(['code' => 3, 'path' => $path]);
+                $e_msg = $this->error_messages["3"] . ' @' . $path . ' ';
+                throw new Exception($e_msg, 3);
             }
             // An apparent bug in PHPs mkdir() is causing directories to be made with
             // wrong permissions. Performing a chmod after creating the directory seems to solve this problem
@@ -331,13 +362,15 @@ class file_handler
             $lock_type = LOCK_EX | LOCK_NB;
         }
         if (!is_writable($path)) {
-            throw new Exception(['code' => 5, 'path' => $path]);
+            $e_msg = $this->error_messages["5"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 5);
         }
         $i = 0;
         while (!flock($fp, $lock_type)) {
             ++$i;
             if (($i == $this->lock_max_time)) {
-                throw new Exception(['code' => 7, 'path' => $path]);
+                $e_msg = $this->error_messages["7"] . ' @' . $path . ' ';
+                throw new Exception($e_msg, 7);
             }
             $rand = rand(100, 1000);
             usleep($rand * 1000); // nanoseconds->milliseconds
@@ -378,11 +411,10 @@ class file_handler
      */
     public function http_stream_file(string $path, int $chunk_size = 8192)
     {
-        // If an error occurs...
-        $this->additional_error_data = array(
-            'source' => __METHOD__,
-            'chunk_size' => $chunk_size,
-        );
+        if ((null === $this->sg) || (null === $this->ft)) {
+            $e_msg = $this->error_messages["16"] . ' ';
+            throw new Exception($e_msg, 16);
+        }
 
         // Variables
         $response_headers = array();
@@ -394,10 +426,12 @@ class file_handler
         // -----------------------
         if (!file_exists($path)) {
             // The file did not exist, handle the error elsewhere
-            throw new Exception(['code' => 11, 'path' => $path]);
+            $e_msg = $this->error_messages["11"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 11);
         }
         if (($file_size = filesize($path)) === false) {
-            throw new Exception(['code' => 12, 'path' => $path]);
+            $e_msg = $this->error_messages["12"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 12);
         }
 
         $start = 0;
@@ -405,7 +439,8 @@ class file_handler
 
         // Attempt to Open file for (r) reading (b=binary safe)
         if (($fp = @fopen($path, 'rb')) == false) {
-            throw new Exception(['code' => 1, 'path' => $path]);
+            $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 1);
         }
 
         // If file was successfully opened, attempt to obtain_lock
@@ -477,7 +512,8 @@ class file_handler
 
         // Get additional headers for the requested file-type
         if (($extension = $this->ft->has_extension($path)) === false) {
-            throw new Exception(['code' => 13, 'path' => $path]);
+            $e_msg = $this->error_messages["13"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 13);
         }
 
         $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
@@ -510,6 +546,53 @@ class file_handler
         }
         fclose($fp);
         exit();
+    }
+
+    /**
+     * Buffer-based Download. Data is written to disk as it is received, avoiding running out of memory.
+     * @return true on success
+     * @throws Exception on failure.
+     */
+    public function download_to_file(string $url, string $output_file_path, string $method = 'GET', array $post_data = null, array $request_headers = [], int $max_line_length = 1024)
+    {
+        $request_headers['user-agent'] = $this->http_user_agent;
+        foreach ($request_headers as $key => $value) {
+            $request_headers_str = $key . ': ' . $value . "\r\n";
+        }
+        $request_headers_str = rtrim($request_headers_str, "\r\n");
+
+        // Set request method and headers...
+        $http_arr = array('method' => $method, 'header' => $request_headers_str);
+
+        // If dealing with a POST, include $post_data if needed
+        if ($method === 'POST') {
+            $parms = '';
+            if (null !== $post_data) {
+                foreach ($post_data as $key => $value) {
+                    $parms .= $key . '=' . $value . '&';
+                }
+                $parms = rtrim($parms, "&");
+            }
+            if (!empty($parms)) {
+               $http_arr['content'] = $parms;
+            }
+        }
+
+        // Create the stream context
+        $context = stream_context_create(array('http' => $http_arr));
+
+        // Attempt to open the remote resource
+        $resource = fopen($url, "r", false, $context);
+        if (!$resource) {
+            $e_msg = $this->error_messages["17"] . ' @' . $url . ' ';
+            throw new Exception($e_msg, 17);
+        }
+        while (!feof($resource)) {
+            $line = fgets($resource, $max_line_length);
+            $this->write_file($output_file_path, $line, 'a'); // a = append to end
+        }
+        fclose($resource);
+        return true;
     }
 
     use \doorkeeper\lib\class_traits\no_set;
