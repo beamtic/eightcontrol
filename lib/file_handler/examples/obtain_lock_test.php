@@ -31,15 +31,12 @@ $fp = @fopen($path, "r");
 
 
 try {
-    $status = $fh->obtain_lock($fp, $path); // Try to obtain file lock
+    $fh->obtain_lock($fp, $path); // Try to obtain file lock
 } catch (Exception $e) {
     echo $e->getMessage();
 }
 
-if ($status) {
-    echo 'Lock obtained successfully!';
-    exit();
-}
+echo 'Lock obtained successfully!';
 
 
 sleep(25); // Sleep 25 secs.. This allows us to test if a file-lock is working as intended by running the script a second time.
