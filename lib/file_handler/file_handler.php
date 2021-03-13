@@ -419,24 +419,86 @@ class file_handler
         // Variables
         $response_headers = array();
 
-
+        // Find out what the client accepts
+        $accept = $this->sg->get_SERVER('HTTP_ACCEPT');
 
         // -----------------------
-        // Handle the file--------
+        // Determine file type and client accept header
         // -----------------------
-        if (!file_exists($path)) {
-            // The file did not exist, handle the error elsewhere
-            $e_msg = $this->error_messages["11"] . ' @' . $path . ' ';
-            throw new Exception($e_msg, 11);
+        // Get additional headers for the requested file-type
+        if (($extension = $this->ft->has_extension($path)) === false) {
+            $e_msg = $this->error_messages["13"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 13);
         }
-        if (($file_size = filesize($path)) === false) {
-            $e_msg = $this->error_messages["12"] . ' @' . $path . ' ';
-            throw new Exception($e_msg, 12);
+        $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
+
+        // Make sure the mime type is acceptable by the client
+        // Respond with "406 Not Acceptable" if not.
+        if (('webp' === $extension) && (extension_loaded('gd'))) {
+            if (
+                (false === str_contains($accept, 'image/webp')) &&
+                (true === str_contains($accept, 'image/jpeg'))
+            ) {
+                // If the client does not accept webp but supports jpg, 
+                // convert the file and/or redirect the client to the jpg version
+                $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
+                $full_uri_clean = $this->sg->get_SERVER('full_uri_clean');
+
+                $jpg_server_loc = substr($path, 0, strrpos($path, '.')) . '.jpg';
+                $jpg_public_loc = substr($full_uri_clean, 0, strrpos($full_uri_clean, '.')) . '.jpg';
+
+
+                if (!file_exists($jpg_server_loc)) {
+                    // Attempt to Open file for (r) reading (b=binary safe)
+                    if (($fp = @fopen($path, 'rb')) == false) {
+                        $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
+                        throw new Exception($e_msg, 1);
+                    }
+                    $this->obtain_lock($fp, $path, true);
+
+                    if (
+                        // Try to create image from webp
+                        (false === ($img = imagecreatefromwebp($path))) ||
+                        // tRY TO Convert the file to jpg with 80% quality
+                        (!imagejpeg($img, $jpg_server_loc, 80))
+                    ) {
+                        // If either attempt failed, throw an Exception
+                        throw new Exception("imagecreatefromwebp() or imagejpg() failed.");
+                    }
+                    imagedestroy($img);
+                    // Release lock
+                    flock($fp, LOCK_UN);
+                }
+                // If everything was successful, redirect the client?
+                // Some clients do not follow redirects on images (I.e: LinkedIn preview crawler).
+                // But, they also do not support delivering a image/jpeg file with a webp file type extension.
+                // For this reason, we should probably stick with using a redirect...
+
+                // Note. Delivering a jpeg with .webp extension is bad UX and confuses users.
+                //       This is just another reason to stick with using redirects.
+
+                // Redirect the user
+                header("location: $jpg_public_loc", false, 307);
+                header('content-length: 0');
+                header('content-type:');
+                exit();
+
+                /*
+
+                // This solution is bad for UX and has been commented out for now
+
+                // Change the path
+                $path = $jpg_server_loc;
+
+                // Change extension and headers
+                if (($extension = $this->ft->has_extension($path)) === false) {
+                    $e_msg = $this->error_messages["13"] . ' @' . $path . ' ';
+                    throw new Exception($e_msg, 13);
+                }
+                $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
+                */
+            }
         }
-
-        $start = 0;
-        $end = $file_size - 1; // Minus 1 (Byte ranges are zero-indexed)
-
         // Attempt to Open file for (r) reading (b=binary safe)
         if (($fp = @fopen($path, 'rb')) == false) {
             $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
@@ -444,7 +506,29 @@ class file_handler
         }
 
         // If file was successfully opened, attempt to obtain_lock
-        $lock_status = $this->obtain_lock($fp, $path, true);
+        $this->obtain_lock($fp, $path, true);
+
+        // Fill out file_size variables after locking the file
+        $file_size = $this->get_file_length($path);
+        $start = 0;
+        $end = $file_size - 1;
+
+        // If Mime Type is not supported by the client
+        if (
+            // Mime Type of requested file
+            (!str_contains($accept, $response_headers['content-type']))  &&
+            // Any Mime Type
+            (!str_contains($accept, '*/*')) &&
+            // If requested file is an image, and client accepts all image types
+            (
+                (!str_contains($response_headers['content-type'], 'image/')) &&
+                (!str_contains($accept, 'image/*')))
+
+        ) {
+            header('content-type: ' . $response_headers['content-type']);
+            http_response_code(406); // Not Acceptable
+            exit();
+        }
 
         // -----------------------
         // Handle "range" requests
@@ -510,14 +594,6 @@ class file_handler
             }
         }
 
-        // Get additional headers for the requested file-type
-        if (($extension = $this->ft->has_extension($path)) === false) {
-            $e_msg = $this->error_messages["13"] . ' @' . $path . ' ';
-            throw new Exception($e_msg, 13);
-        }
-
-        $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
-
         foreach ($response_headers as $header => $value) {
             header($header . ': ' . $value);
         }
@@ -574,7 +650,7 @@ class file_handler
                 $parms = rtrim($parms, "&");
             }
             if (!empty($parms)) {
-               $http_arr['content'] = $parms;
+                $http_arr['content'] = $parms;
             }
         }
 
@@ -593,6 +669,27 @@ class file_handler
         }
         fclose($resource);
         return true;
+    }
+
+    /**
+     * Method to get the length of a file
+     * @param string $path 
+     * @return int 
+     * @throws Exception 
+     */
+    private function get_file_length(string $path): int
+    {
+        if (!file_exists($path)) {
+            // The file did not exist, handle the error elsewhere
+            $e_msg = $this->error_messages["11"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 11);
+        }
+
+        if (($file_size = filesize($path)) === false) {
+            $e_msg = $this->error_messages["12"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 12);
+        }
+        return $file_size;
     }
 
     use \doorkeeper\lib\class_traits\no_set;
