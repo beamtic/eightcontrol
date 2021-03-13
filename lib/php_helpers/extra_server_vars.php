@@ -17,12 +17,14 @@ namespace doorkeeper\lib\php_helpers;
 
 class extra_server_vars
 {
+
     public function __construct(string $BASE_PATH)
     {
         $this->define_request_protocol();
         $this->define_full_request_uri();
         $this->define_url_parts();
         $_SERVER['base_path'] = $BASE_PATH;
+        $_SERVER['request_time'] = time();
     }
     /**
      * Define the request_protocol (since $_SERVER['HTTPS'] is not consistent)
@@ -48,8 +50,16 @@ class extra_server_vars
     private function define_url_parts()
     {
         // First, lets parse the REQUEST_URI
-        $parsed_uri = parse_url($_SERVER['REQUEST_URI']);
-
+        $parsed_uri = parse_url($_SERVER['full_request_uri']);
+        // If unable to parse the REQUEST_URI, return false (something dubious is going on with the request?)
+        if (false === isset($parsed_uri['path'])) {
+            return false;
+        }
+        
+        // The scheme and host, and nothing more :-)
+        $_SERVER['site_base'] = $parsed_uri['scheme'] . '://' . $parsed_uri['host'];
+        // full request uri without parameters
+        $_SERVER['full_uri_clean'] = $parsed_uri['scheme'] . '://' . $parsed_uri['host'] . $parsed_uri['path'];
         // The request_path only contains the path, without GET parameters.
         $_SERVER['request_path'] = $parsed_uri['path'];
         // The query string is parsed automatically by PHP

@@ -180,7 +180,29 @@ class php_helpers
         }
     }
     /**
-     * UFT-8 safe method to count the number of characters in a string.
+     * Checks if an array is associative. Return value of 'False' indicates a sequential array.
+     * @param array $inptArry 
+     * @return bool 
+     */
+    public function is_associative(array $inptArry): bool
+    {
+        // An empty array is in theory a valid associative array
+        // so we return 'true' for empty.
+        if ([] === $inptArry) {
+            return true;
+        }
+
+        for ($i = 0; $i < count($inptArry); $i++) {
+            if (!array_key_exists($i, $inptArry)) {
+                return true;
+            }
+        }
+        // Dealing with a Sequential array
+        return false;
+    }
+
+    /**
+     * UTF-8 safe method to count the number of characters in a string.
      *
      * @param string $string
      * @return integeer
@@ -188,6 +210,15 @@ class php_helpers
     public function count_characters(string $string)
     {
         return count(preg_split('//u', $string, -1, PREG_SPLIT_NO_EMPTY));
+    }
+
+    /**
+     * Method to replace the first occurance of a string within another string
+     * 
+     */
+    function replace_first_str(string $search_str, string $replacement_str, string $src_str): string
+    {
+        return (false !== ($pos = strpos($src_str, $search_str))) ? substr_replace($src_str, $replacement_str, $pos, strlen($search_str)) : $src_str;
     }
     use \doorkeeper\lib\class_traits\no_set;
 }
