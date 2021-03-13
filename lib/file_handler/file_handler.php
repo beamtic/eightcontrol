@@ -432,8 +432,7 @@ class file_handler
         }
         $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
 
-        // Make sure the mime type is acceptable by the client
-        // Respond with "406 Not Acceptable" if not.
+        // If a webp image was requested, make sure it is supported by the client
         if (('webp' === $extension) && (extension_loaded('gd'))) {
             if (
                 (false === str_contains($accept, 'image/webp')) &&
@@ -485,7 +484,8 @@ class file_handler
 
                 /*
 
-                // This solution is bad for UX and has been commented out for now
+                // This solution is bad for UX and has been commented out for now.
+                // Comment out the header()'s above, before re-applying this code.
 
                 // Change the path
                 $path = $jpg_server_loc;
@@ -514,12 +514,13 @@ class file_handler
         $end = $file_size - 1;
 
         // If Mime Type is not supported by the client
+        // Send a 406 Not Acceptable response if the client does not support the content type
         if (
             // Mime Type of requested file
             (!str_contains($accept, $response_headers['content-type']))  &&
-            // Any Mime Type
+            // Any Mime Type (*/*)
             (!str_contains($accept, '*/*')) &&
-            // If requested file is an image, and client accepts all image types
+            // If requested file is an image, and client claims to accept all image types
             (
                 (!str_contains($response_headers['content-type'], 'image/')) &&
                 (!str_contains($accept, 'image/*')))
