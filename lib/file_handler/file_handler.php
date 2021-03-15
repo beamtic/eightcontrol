@@ -54,6 +54,7 @@ class file_handler
         $this->sg = $superglobals;
         $this->helpers = $php_helpers;
     }
+
     /**
      * A standard method to delete both directories and files, if the permissions allow it, a directory will be deleted, including subdirectories.
      * @param string $file_or_dir 
@@ -103,6 +104,7 @@ class file_handler
         } // Delete directory
         return true; // Return true on success
     }
+
     /**
      * Method to delete all files in a directory
      * @param string $directory 
@@ -127,6 +129,7 @@ class file_handler
         }
         return true;
     }
+
     /**
      * Method to read a file or the specified parts of it. The default max_line_length is 4096.
      * Note. This function does not call clearstatcache(); do that from the outside if needed!
@@ -206,6 +209,7 @@ class file_handler
         fclose($fp); // Closing after successful operation
         return $file_content;
     }
+
     /**
      * Method to count the lines in files, useful if you want to read a file x lines at a time
      * within a loop. Also useful to count the lines in your source code. Returns the line count as an int, or an array of int's if $search_string is used.
@@ -257,6 +261,7 @@ class file_handler
         // Return the Line Number or array of line numbers
         return (isset($line_occurrences)) ? $line_occurrences : $lc;
     }
+
     /**
      * Method to write to the filesystem. A file lock should automatically be obtained, ideal in concurrency siturations.
      * @param string $path 
@@ -289,6 +294,7 @@ class file_handler
             return true;
         } // fclose also releases the file lock
     }
+
     /**
      * Method to create recursively create directories - the way you expect :-)
      * @param string $path 
@@ -351,6 +357,7 @@ class file_handler
         // If all directories was created successfully return true
         return true;
     }
+
     /**
      * Method to obtain a file lock before reading (shared) or writing (single) from/to files.
      * 
@@ -385,6 +392,7 @@ class file_handler
         return true; // Return true if file-lock was successfully obtained
 
     }
+
     /**
      * Method to scan a directory and return the result as an array.
      */
@@ -396,10 +404,7 @@ class file_handler
     }
 
     /**
-     * Method to "stream" a file over HTTP in response to a client request.
-     * "range" requests are supported, making it possible to stream audio and video files from PHP.
-     * This function exits() on success, and outputs an error array on failure.
-     * error 1 = failed to open file. error 11 = file did not exist
+     * Method to "stream" a file over HTTP in response to a client request. HTTP "range" requests are supported, making it possible to stream audio and video files from PHP.
      * @param string $path 
      * @param int $chunk_size 
      * @return exit 
@@ -410,6 +415,13 @@ class file_handler
         if ((null === $this->sg) || (null === $this->ft)) {
             $e_msg = $this->error_messages["16"] . ' ';
             throw new Exception($e_msg, 16);
+        }
+
+        // Check if the file exists before doing anything with it
+        if (!file_exists($path)) {
+            // The file did not exist, handle the error elsewhere
+            $e_msg = $this->error_messages["11"] . ' @' . $path . ' ';
+            throw new Exception($e_msg, 11);
         }
 
         // Variables
@@ -429,7 +441,18 @@ class file_handler
         $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
 
         // If a an image was requested, make sure it is supported by the client
-        if (str_contains($response_headers['content-type'], 'image/')) {
+        // if not, check if there is another type available, try to convert if not..
+        // Note.. Do not try to convert .png images. They sometimes end up larger when converted to avif.
+        if (
+            (str_contains($response_headers['content-type'], 'image/') &&
+                // Do not touch the following file types:
+                (
+                  ('png' !== $extension) &&
+                  ('svg' !== $extension) &&
+                  ('gif' !== $extension)
+                )
+            )
+        ) {
             $this->check_image_accept($path, $extension, $accept, $response_headers);
         }
 
@@ -634,13 +657,12 @@ class file_handler
     }
 
     /**
-     * Method to determine Image support via Accept HTTP header,
-     * and to convert existing files into more suitable formats
+     * Method to determine Image support via Accept HTTP header, and to convert existing files into more suitable formats
      * @param string $path 
      * @param string $extension 
      * @param string $accept 
      * @param array $response_headers 
-     * @return bool|void 
+     * @return bool 
      * @throws Exception 
      */
     private function check_image_accept(string $path, string $extension, string $accept, array $response_headers)
@@ -674,12 +696,13 @@ class file_handler
             }
 
             // If the file did not exist, check if we can convert the requested image
+            // First check if the convert command is available
             if ($this->helpers->command_exists('convert')) {
                 // We are going to use the 'convert' command for this
                 // and, unfurtunately, this probably only exists on Linux systems..
 
                 // Attempt to convert the file
-                shell_exec('convert ' . escapeshellcmd($path . ' ' . $avif_server_loc));
+                shell_exec('convert ' . escapeshellcmd($path . ' -quality 50% ' . $avif_server_loc));
 
                 // If the conversion was successful, redirect to the converted file
                 if (file_exists($avif_server_loc)) {
@@ -695,7 +718,7 @@ class file_handler
         // It was not possible to serve an avif file, so we continue
         // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-        // If a webp file was requested, we ought to make sure the client supports it,
+        // If a webp or avif file was requested, we ought to make sure the client supports it,
         // and if not we will instead try to redirect to the jpeg version of the file.
         if (('webp' === $extension) || ('avif' === $extension)) {
             if (
@@ -704,11 +727,10 @@ class file_handler
                 (
                     // and if jpeg is supported
                     (true === str_contains($accept, 'image/jpeg')) ||
-                    // Client is askin for any available format
+                    // Client is asking for any available format
                     (true === str_contains($accept, '*/*')) ||
-                    // Client is askin for any available image format
-                    (true === str_contains($accept, 'image/*'))
-                )
+                    // Client is asking for any available image format
+                    (true === str_contains($accept, 'image/*')))
             ) {
 
                 $jpg_server_loc = substr($path, 0, strrpos($path, '.')) . '.jpg';
@@ -728,34 +750,54 @@ class file_handler
                 // Convert the file
                 // >>>>>>>>>>>>>>>>
 
-                // Attempt to Open file for (r) reading (b=binary safe)
-                if (($fp = @fopen($path, 'rb')) == false) {
-                    $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
-                    throw new Exception($e_msg, 1);
+                //
+                if ('webp' === $extension) {
+                    // Attempt to Open file for (r) reading (b=binary safe)
+                    if (($fp = @fopen($path, 'rb')) == false) {
+                        $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
+                        throw new Exception($e_msg, 1);
+                    }
+                    $this->obtain_lock($fp, $path, true);
+
+                    if (
+                        // Try to create image from webp
+                        (false === ($img = imagecreatefromwebp($path))) ||
+                        // Try To Convert the file to jpg with 80% quality
+                        (!imagejpeg($img, $jpg_server_loc, 80))
+                    ) {
+                        // If either attempt failed, throw an Exception?
+                        // Silently serve the requested file as-is
+
+                        // throw new Exception("imagecreatefromwebp() or imagejpg() failed.");
+
+                        return false;
+                    } else {
+                        imagedestroy($img);
+                    }
+                    // Release lock
+                    flock($fp, LOCK_UN);
+                } else if ('avif' === $extension) {
+                    // We already checked if the .jpg exists, so if this point is reached
+                    // we just assume the file does not exist, and try to convert the requested .avif
+                    if ($this->helpers->command_exists('convert')) {
+                        shell_exec('convert ' . escapeshellcmd($path . ' ' . $jpg_server_loc));
+                    }
                 }
-                $this->obtain_lock($fp, $path, true);
-                if (
-                    // Try to create image from webp
-                    (false === ($img = imagecreatefromwebp($path))) ||
-                    // tRY TO Convert the file to jpg with 80% quality
-                    (!imagejpeg($img, $jpg_server_loc, 80))
-                ) {
-                    // If either attempt failed, throw an Exception
-                    throw new Exception("imagecreatefromwebp() or imagejpg() failed.");
-                }
-                imagedestroy($img);
-                // Release lock
-                flock($fp, LOCK_UN);
 
                 // If the conversion appears to have been successful, redirect the file
                 if (file_exists($jpg_server_loc)) {
                     $this->redirect_to_suitable($jpg_public_loc);
                 } else {
-                    // Silently serve the original file as-is instead
+                    // Silently serve the original file as-is
                     return false;
                 }
+
+                // This point should not be reached
+                return false;
             }
         }
+        // No ideal available, serving requested file as-is
+        return false;
     }
 
     /**
