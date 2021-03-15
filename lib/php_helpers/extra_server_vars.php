@@ -41,7 +41,10 @@ class extra_server_vars
      */
     private function define_full_request_uri()
     {
-        $_SERVER['full_request_uri'] = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+        // (optional) if test_server_name is defined, use that instead of HTTP_HOST
+        $host = (isset($_SERVER['test_server_name'])) ? $_SERVER['test_server_name'] : $_SERVER['HTTP_HOST'];
+
+        $_SERVER['full_request_uri'] = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http') . '://' . $host . $_SERVER['REQUEST_URI'];
     }
     /**
      * Define URL parts
@@ -55,7 +58,7 @@ class extra_server_vars
         if (false === isset($parsed_uri['path'])) {
             return false;
         }
-        
+
         // The scheme and host, and nothing more :-)
         $_SERVER['site_base'] = $parsed_uri['scheme'] . '://' . $parsed_uri['host'];
         // full request uri without parameters
