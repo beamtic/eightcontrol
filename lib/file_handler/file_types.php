@@ -25,7 +25,7 @@ class file_types
 
     // Maximum time to cache static resources in seconds (604800=7 days)
     public $max_age_av = '604800';
-    public $max_age_images = '84600'; // Audio/video 84600=1 day
+    public $max_age_images = '2592000'; // Audio/video 84600=1 day, 2592000=30 days
     public $disable_caching = false;
 
     private $file_types = array();
@@ -57,11 +57,17 @@ class file_types
      */
     public function get_file_headers(string $extension)
     {
+        $shared_file_headers = array(
+            'x-content-type-options' => 'nosniff',
+            'accept-ranges' => 'bytes'
+        );
+
         if (isset($this->file_types["$extension"])) {
             if ($this->disable_caching === true) {
                 $this->file_types["$extension"]['cache-control'] = 'no-cache';
             }
-            $response_headers = $this->file_types["$extension"];
+            // Note. The keys on the left will overwrite those on the right
+            $response_headers = $this->file_types["$extension"] + $shared_file_headers;
         } else {
             // The File Type was unknown, use 'application/octet-stream' to allow downloading the file
             $response_headers = array('content-type' => 'application/octet-stream', 'cache-control' => 'max-age=84600, private');
@@ -102,44 +108,45 @@ class file_types
 
         // Text Types
         $this->file_types = array(
-            'txt' => array('content-type' => 'text/plain; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
-            'html' => array('content-type' => 'text/html; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
-            'rss' => array('content-type' => 'text/xml; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
-            'xml' => array('content-type' => 'application/xml; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
-            'xhtml' => array('content-type' => 'application/xhtml+xml; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
-            'css' => array('content-type' => '	text/css; charset=utf-8', 'cache-control' => 'max-age=84600, private', 'accept-ranges' => 'bytes'),
+            'txt' => array('content-type' => 'text/plain; charset=utf-8', 'cache-control' => 'max-age=84600, private'),
+            'html' => array('content-type' => 'text/html; charset=utf-8', 'cache-control' => 'max-age=84600, private'),
+            'rss' => array('content-type' => 'text/xml; charset=utf-8', 'cache-control' => 'max-age=84600, private'),
+            'xml' => array('content-type' => 'application/xml; charset=utf-8', 'cache-control' => 'max-age=84600, private'),
+            'xhtml' => array('content-type' => 'application/xhtml+xml; charset=utf-8', 'cache-control' => 'max-age=84600, private'),
+            'css' => array('content-type' => '	text/css; charset=utf-8', 'cache-control' => 'max-age=84600, private'),
         );
         // Images
         $this->file_types = $this->file_types + array(
-            'jpg' => array('content-type' => 'image/jpeg', 'cache-control' => 'max-age=' . $this->max_age_images . ', public', 'accept-ranges' => 'bytes'),
-            'jpeg' => array('content-type' => 'image/jpeg', 'cache-control' => 'max-age=' . $this->max_age_images . ', public', 'accept-ranges' => 'bytes'),
-            'png' => array('content-type' => 'image/png', 'cache-control' => 'max-age=' . $this->max_age_images . ', public', 'accept-ranges' => 'bytes'),
-            'webp' => array('content-type' => 'image/webp', 'cache-control' => 'max-age=' . $this->max_age_images . ', public', 'accept-ranges' => 'bytes'),
-            'svg' => array('content-type' => 'image/svg+xml; charset=utf-8', 'cache-control' => 'max-age=' . $this->max_age_images . ', private', 'accept-ranges' => 'bytes'),
-            'gif' => array('content-type' => 'image/gif', 'cache-control' => 'max-age=' . $this->max_age_images . ', private', 'accept-ranges' => 'bytes'),
+            'jpg' => array('content-type' => 'image/jpeg', 'cache-control' => 'max-age=' . $this->max_age_images . ', public'),
+            'jpeg' => array('content-type' => 'image/jpeg', 'cache-control' => 'max-age=' . $this->max_age_images . ', public'),
+            'png' => array('content-type' => 'image/png', 'cache-control' => 'max-age=' . $this->max_age_images . ', public'),
+            'avif' => array('content-type' => 'image/avif', 'cache-control' => 'max-age=' . $this->max_age_images . ', public'),
+            'webp' => array('content-type' => 'image/webp', 'cache-control' => 'max-age=' . $this->max_age_images . ', public'),
+            'svg' => array('content-type' => 'image/svg+xml; charset=utf-8', 'cache-control' => 'max-age=' . $this->max_age_images . ', private'),
+            'gif' => array('content-type' => 'image/gif', 'cache-control' => 'max-age=' . $this->max_age_images . ', private'),
         );
         // Audio and Video
         $this->file_types = $this->file_types + array(
-            'mp3' => array('content-type' => 'audio/mpeg', 'cache-control' => 'max-age=' . $this->max_age_av . ', public', 'accept-ranges' => 'bytes'),
-            'mp4' => array('content-type' => 'video/mp4', 'cache-control' => 'max-age=' . $this->max_age_av . ', public', 'accept-ranges' => 'bytes'),
-            'wav' => array('content-type' => 'audio/wav', 'cache-control' => 'max-age=' . $this->max_age_av . ', public', 'accept-ranges' => 'bytes'),
-            'ogg' => array('content-type' => 'application/ogg', 'cache-control' => 'max-age=' . $this->max_age_av . ', public', 'accept-ranges' => 'bytes'),
-            'flac' => array('content-type' => 'audio/flac', 'cache-control' => 'max-age=' . $this->max_age_av . ', public', 'accept-ranges' => 'bytes'),
+            'mp3' => array('content-type' => 'audio/mpeg', 'cache-control' => 'max-age=' . $this->max_age_av . ', public'),
+            'mp4' => array('content-type' => 'video/mp4', 'cache-control' => 'max-age=' . $this->max_age_av . ', public'),
+            'wav' => array('content-type' => 'audio/wav', 'cache-control' => 'max-age=' . $this->max_age_av . ', public'),
+            'ogg' => array('content-type' => 'application/ogg', 'cache-control' => 'max-age=' . $this->max_age_av . ', public'),
+            'flac' => array('content-type' => 'audio/flac', 'cache-control' => 'max-age=' . $this->max_age_av . ', public'),
         );
 
         // Compressed files
         $this->file_types = $this->file_types + array(
-            '7z' => array('content-type' => 'application/x-7z-compressed', 'cache-control' => 'max-age=84600, public', 'accept-ranges' => 'bytes'),
-            'rar' => array('content-type' => 'application/x-rar-compressed', 'cache-control' => 'max-age=84600, public', 'accept-ranges' => 'bytes'),
-            'zip' => array('content-type' => 'application/zip', 'cache-control' => 'max-age=84600, public', 'accept-ranges' => 'bytes'),
-            'gz' => array('content-type' => 'application/x-gzip', 'cache-control' => 'max-age=84600, public', 'accept-ranges' => 'bytes'),
+            '7z' => array('content-type' => 'application/x-7z-compressed', 'cache-control' => 'max-age=84600, public'),
+            'rar' => array('content-type' => 'application/x-rar-compressed', 'cache-control' => 'max-age=84600, public'),
+            'zip' => array('content-type' => 'application/zip', 'cache-control' => 'max-age=84600, public'),
+            'gz' => array('content-type' => 'application/x-gzip', 'cache-control' => 'max-age=84600, public'),
         );
 
         // Font files
         $this->file_types = $this->file_types + array(
-            'woff' => array('content-type' => 'font/woff', 'cache-control' => 'max-age=84600, public', 'accept-ranges' => 'bytes'),
-            'woff2' => array('content-type' => 'font/woff2', 'cache-control' => 'max-age=84600, public', 'accept-ranges' => 'bytes'),
-            'ttf' => array('content-type' => 'application/x-font-ttf', 'cache-control' => 'max-age=84600, public', 'accept-ranges' => 'bytes'),
+            'woff' => array('content-type' => 'font/woff', 'cache-control' => 'max-age=84600, public'),
+            'woff2' => array('content-type' => 'font/woff2', 'cache-control' => 'max-age=84600, public'),
+            'ttf' => array('content-type' => 'application/x-font-ttf', 'cache-control' => 'max-age=84600, public'),
         );
     }
 

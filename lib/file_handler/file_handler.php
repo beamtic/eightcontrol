@@ -14,7 +14,7 @@
 
 namespace doorkeeper\lib\file_handler;
 
-use doorkeeper\lib\php_helpers\{superglobals};
+use doorkeeper\lib\php_helpers\{superglobals, php_helpers};
 use Exception;
 
 class file_handler
@@ -45,12 +45,14 @@ class file_handler
     private $lock_max_time = 20; // File-lock maximum time in seconds.
 
     private $ft; // The $file_types object, used in http_stream_file()
-    private $sg;
+    private $sg; // Superglobals object
+    private $helpers; // PHP Helper functions
 
-    public function __construct(superglobals $superglobals = null, file_types $file_types = null)
+    public function __construct(superglobals $superglobals = null, php_helpers $php_helpers, file_types $file_types = null)
     {
         $this->ft = $file_types;
         $this->sg = $superglobals;
+        $this->helpers = $php_helpers;
     }
     /**
      *  A standard method to delete both directories and files,
@@ -432,73 +434,11 @@ class file_handler
         }
         $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
 
-        // If a webp image was requested, make sure it is supported by the client
-        if (('webp' === $extension) && (extension_loaded('gd'))) {
-            if (
-                (false === str_contains($accept, 'image/webp')) &&
-                (true === str_contains($accept, 'image/jpeg'))
-            ) {
-                // If the client does not accept webp but supports jpg, 
-                // convert the file and/or redirect the client to the jpg version
-                $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
-                $full_uri_clean = $this->sg->get_SERVER('full_uri_clean');
-
-                $jpg_server_loc = substr($path, 0, strrpos($path, '.')) . '.jpg';
-                $jpg_public_loc = substr($full_uri_clean, 0, strrpos($full_uri_clean, '.')) . '.jpg';
-
-
-                if (!file_exists($jpg_server_loc)) {
-                    // Attempt to Open file for (r) reading (b=binary safe)
-                    if (($fp = @fopen($path, 'rb')) == false) {
-                        $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
-                        throw new Exception($e_msg, 1);
-                    }
-                    $this->obtain_lock($fp, $path, true);
-
-                    if (
-                        // Try to create image from webp
-                        (false === ($img = imagecreatefromwebp($path))) ||
-                        // tRY TO Convert the file to jpg with 80% quality
-                        (!imagejpeg($img, $jpg_server_loc, 80))
-                    ) {
-                        // If either attempt failed, throw an Exception
-                        throw new Exception("imagecreatefromwebp() or imagejpg() failed.");
-                    }
-                    imagedestroy($img);
-                    // Release lock
-                    flock($fp, LOCK_UN);
-                }
-                // If everything was successful, redirect the client?
-                // Some clients do not follow redirects on images (I.e: LinkedIn preview crawler).
-                // But, they also do not support delivering a image/jpeg file with a webp file type extension.
-                // For this reason, we should probably stick with using a redirect...
-
-                // Note. Delivering a jpeg with .webp extension is bad UX and confuses users.
-                //       This is just another reason to stick with using redirects.
-
-                // Redirect the user
-                header("location: $jpg_public_loc", false, 307);
-                header('content-length: 0');
-                header('content-type:');
-                exit();
-
-                /*
-
-                // This solution is bad for UX and has been commented out for now.
-                // Comment out the header()'s above, before re-applying this code.
-
-                // Change the path
-                $path = $jpg_server_loc;
-
-                // Change extension and headers
-                if (($extension = $this->ft->has_extension($path)) === false) {
-                    $e_msg = $this->error_messages["13"] . ' @' . $path . ' ';
-                    throw new Exception($e_msg, 13);
-                }
-                $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
-                */
-            }
+        // If a an image was requested, make sure it is supported by the client
+        if (str_contains($response_headers['content-type'], 'image/')) {
+            $this->check_image_accept($path, $extension, $accept, $response_headers);
         }
+
         // Attempt to Open file for (r) reading (b=binary safe)
         if (($fp = @fopen($path, 'rb')) == false) {
             $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
@@ -691,6 +631,136 @@ class file_handler
             throw new Exception($e_msg, 12);
         }
         return $file_size;
+    }
+
+    /**
+     * Method to determine Image support via Accept HTTP header,
+     * and to convert existing files into more suitable formats
+     * @param string $path 
+     * @param string $extension 
+     * @param string $accept 
+     * @return void 
+     * @throws Exception 
+     */
+    private function check_image_accept(string $path, string $extension, string $accept, array $response_headers)
+    {
+        // Sorry. I know this is getting complex.
+        // We may decide to move some of these functions to a dedicated class at some point.
+
+        // Note. Some clients do not follow redirects on images (I.e: LinkedIn preview crawler).
+        // In fact. LinkedIn's crawler does not even appear to request
+        // images with unsupported file extensions
+
+        // Note. The gd conversion method is preffered, since it is more broadly supported.
+        //       Once gd is able to convert to avif, use gd instead of the 'convert' command.
+
+        $full_uri_clean = $this->sg->get_SERVER('full_uri_clean');
+
+        // If the client specifically claims to support avif, we should redirect to the avif version.
+        if (true === str_contains($accept, 'image/avif')) {
+            // The avif format is relativly new, and currently only supported by very few clients.
+            // avif, so far, provides best compression, so of course we want to support it.
+            if ('avif' === $extension) {
+                return true;
+            }
+
+            $avif_server_loc = substr($path, 0, strrpos($path, '.')) . '.avif';
+            $avif_public_loc = substr($full_uri_clean, 0, strrpos($full_uri_clean, '.')) . '.avif';
+
+            // If the ideal file type already exists, redirect to the file
+            if (file_exists($avif_server_loc)) {
+                $this->redirect_to_suitable($avif_public_loc);
+            }
+
+            // If the file did not exist, check if we can convert the requested image
+            if ($this->helpers->command_exists('convert')) {
+                // We are going to use the 'convert' command for this
+                // and, unfurtunately, this probably only exists on Linux systems..
+
+                // Attempt to convert the file
+                shell_exec('convert ' . escapeshellcmd($path . ' ' . $avif_server_loc));
+
+                // If the conversion was successful, redirect to the converted file
+                if (file_exists($avif_server_loc)) {
+                    $this->redirect_to_suitable($avif_public_loc);
+                } else {
+                    // Silently serve the original file as-is instead
+                    return false;
+                }
+            }
+        }
+
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        // It was not possible to serve an avif file, so we continue
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+        // If a webp file was requested, we ought to make sure the client supports it,
+        // and if not we will instead try to redirect to the jpeg version of the file.
+        if (('webp' === $extension) || ('avif' === $extension)) {
+            if (
+                (false === str_contains($accept, 'image/webp')) &&
+                (true === str_contains($accept, 'image/jpeg'))
+            ) {
+
+                $jpg_server_loc = substr($path, 0, strrpos($path, '.')) . '.jpg';
+                $jpg_public_loc = substr($full_uri_clean, 0, strrpos($full_uri_clean, '.')) . '.jpg';
+
+                // If the ideal file type already exists, redirect to the file
+                if (file_exists($jpg_server_loc)) {
+                    $this->redirect_to_suitable($jpg_public_loc);
+                }
+
+                // If the gd extension is not loaded, just serve the file as-is
+                if (false === extension_loaded('gd')) {
+                    return false;
+                }
+
+                // >>>>>>>>>>>>>>>>
+                // Convert the file
+                // >>>>>>>>>>>>>>>>
+
+                // Attempt to Open file for (r) reading (b=binary safe)
+                if (($fp = @fopen($path, 'rb')) == false) {
+                    $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
+                    throw new Exception($e_msg, 1);
+                }
+                $this->obtain_lock($fp, $path, true);
+                if (
+                    // Try to create image from webp
+                    (false === ($img = imagecreatefromwebp($path))) ||
+                    // tRY TO Convert the file to jpg with 80% quality
+                    (!imagejpeg($img, $jpg_server_loc, 80))
+                ) {
+                    // If either attempt failed, throw an Exception
+                    throw new Exception("imagecreatefromwebp() or imagejpg() failed.");
+                }
+                imagedestroy($img);
+                // Release lock
+                flock($fp, LOCK_UN);
+
+                // If the conversion appears to have been successful, redirect the file
+                if (file_exists($jpg_server_loc)) {
+                    $this->redirect_to_suitable($jpg_public_loc);
+                } else {
+                    // Silently serve the original file as-is instead
+                    return false;
+                }
+            }
+        }
+    }
+
+    /**
+     * Redirects to a more suitable file format and exits()
+     * @param string $location 
+     * @return exit 
+     */
+    private function redirect_to_suitable(string $location)
+    {
+        // Redirect the user to the preffered image format
+        header("location: $location", false, 307);
+        header('content-length: 0'); // No body length
+        header('content-type:'); // Nullify the content-type if needed
+        exit();
     }
 
     use \doorkeeper\lib\class_traits\no_set;
