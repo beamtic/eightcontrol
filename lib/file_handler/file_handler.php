@@ -55,11 +55,10 @@ class file_handler
         $this->helpers = $php_helpers;
     }
     /**
-     *  A standard method to delete both directories and files,
-     *  if the permissions allow it, a directory will be deleted, including subdirectories.
-     *  @param string $file_or_dir Path to file or directory
-     *  @return true
-     *  @throws Exception on failure.
+     * A standard method to delete both directories and files, if the permissions allow it, a directory will be deleted, including subdirectories.
+     * @param string $file_or_dir 
+     * @return true 
+     * @throws Exception 
      */
     public function simple_delete(string $file_or_dir)
     {
@@ -105,11 +104,11 @@ class file_handler
         return true; // Return true on success
     }
     /**
-     *  Method to delete all files in a directory
-     *  @param string $directory Path to directory
-     *  @param string $pattern I.e.: *.
-     *  @return true
-     *  @throws Exception on failure.
+     * Method to delete all files in a directory
+     * @param string $directory 
+     * @param string $pattern 
+     * @return true 
+     * @throws Exception 
      */
     public function delete_files(string $directory, string $pattern)
     {
@@ -129,11 +128,14 @@ class file_handler
         return true;
     }
     /**
-     *  Method to read a file or the specified parts of it. The default max_line_length is 4096.
-     *  Note. This function does not call clearstatcache(); do that from the outside if needed!
-     *  @param array $arguments_arr path=REQUIRED (string), start_line=0 (int), max_line_length=4096 (int), lines_to_read=false (int)
-     *  @return string
-     *  @throws Exception on failure.
+     * Method to read a file or the specified parts of it. The default max_line_length is 4096.
+     * Note. This function does not call clearstatcache(); do that from the outside if needed!
+     * @param string $path 
+     * @param int $start_line 
+     * @param int $max_line_length 
+     * @param int|null $lines_to_read 
+     * @return string|false 
+     * @throws Exception 
      */
     public function read_file_lines(string $path, int $start_line = 0, int $max_line_length = 4096, int $lines_to_read = null)
     {
@@ -205,13 +207,13 @@ class file_handler
         return $file_content;
     }
     /**
-     *  Method to count the lines in files, useful if you want to read a file x lines at a time
-     *  within a loop. Also useful to count the lines in your source code.
-     *
-     *  Returns the line count as an int, or an array of int's if $search_string is used.
-     * 
-     *  
-     *  @throws Exception on failure.
+     * Method to count the lines in files, useful if you want to read a file x lines at a time
+     * within a loop. Also useful to count the lines in your source code. Returns the line count as an int, or an array of int's if $search_string is used.
+     * @param string $path 
+     * @param int $max_line_length 
+     * @param string|null $search_string 
+     * @return array|int 
+     * @throws Exception 
      */
     public function count_lines(string $path, int $max_line_length = 4096, string $search_string = null)
     {
@@ -256,12 +258,13 @@ class file_handler
         return (isset($line_occurrences)) ? $line_occurrences : $lc;
     }
     /**
-     *  Method to write to the filesystem.
-     *
-     *  A file lock should automatically be obtained, ideal in concurrency siturations.
-     *
-     *  @return true
-     *  @throws Exception on failure.
+     * Method to write to the filesystem. A file lock should automatically be obtained, ideal in concurrency siturations.
+     * @param string $path 
+     * @param string $content 
+     * @param string $mode 
+     * @param int $permissions 
+     * @return true 
+     * @throws Exception 
      */
     public function write_file(string $path, string $content = '', string $mode = 'w', int $permissions = 0775)
     {
@@ -287,11 +290,12 @@ class file_handler
         } // fclose also releases the file lock
     }
     /**
-     *  Method to create recursively create directories - the way you expect :-)
-     *
-     *   @param array $arguments_arr path=REQUIRED (string), permissions=0775 (int)
-     *   @return true
-     *   @throws Exception on failure.
+     * Method to create recursively create directories - the way you expect :-)
+     * @param string $path 
+     * @param string|null $base_path 
+     * @param int $permissions 
+     * @return true 
+     * @throws Exception 
      */
     public function create_directory(string $path, string $base_path = null, int $permissions = 0775)
     {
@@ -348,12 +352,13 @@ class file_handler
         return true;
     }
     /**
-     *  Method to obtain a file lock before reading (shared) or writing (single) from/to files.
-     *
-     *   @param $fp file pointer.
-     *   @param boolean $LOCK_SH The type of lock to be obtained.
-     *   @return true
-     *   @throws Exception on failure.
+     * Method to obtain a file lock before reading (shared) or writing (single) from/to files.
+     * 
+     * @param mixed $fp 
+     * @param string $path 
+     * @param bool $LOCK_SH 
+     * @return true 
+     * @throws Exception 
      */
     public function obtain_lock($fp, string $path, $LOCK_SH = false)
     {
@@ -380,19 +385,6 @@ class file_handler
         return true; // Return true if file-lock was successfully obtained
 
     }
-    private function read_file_settings(array $arg_arr)
-    {
-        trigger_error('This method will probably be removed soon.', E_USER_DEPRECATED);
-        $read_setting = array();
-        $read_setting['start_line'] = 0; // The line to start reading from, use this if you want to resume reading a file at a certain point (or use ftell)
-        $read_setting['max_line_length'] = 4096; // Max length of line In bytes (This should be large enough to hold the longest line)
-        $read_setting['lines_to_read'] = false; // False indicates the entire file should be read
-
-        foreach ($arg_arr as $key => $value) {
-            $read_setting["$key"] = $value; // Overwrite defaults if nessecery
-        }
-        return $read_setting;
-    }
     /**
      * Method to scan a directory and return the result as an array.
      */
@@ -408,8 +400,10 @@ class file_handler
      * "range" requests are supported, making it possible to stream audio and video files from PHP.
      * This function exits() on success, and outputs an error array on failure.
      * error 1 = failed to open file. error 11 = file did not exist
-     * @throws Exception on failure.
-     * 
+     * @param string $path 
+     * @param int $chunk_size 
+     * @return exit 
+     * @throws Exception 
      */
     public function http_stream_file(string $path, int $chunk_size = 8192)
     {
@@ -567,8 +561,14 @@ class file_handler
 
     /**
      * Buffer-based Download. Data is written to disk as it is received, avoiding running out of memory.
-     * @return true on success
-     * @throws Exception on failure.
+     * @param string $url 
+     * @param string $output_file_path 
+     * @param string $method 
+     * @param array|null $post_data 
+     * @param array $request_headers 
+     * @param int $max_line_length 
+     * @return true 
+     * @throws Exception 
      */
     public function download_to_file(string $url, string $output_file_path, string $method = 'GET', array $post_data = null, array $request_headers = [], int $max_line_length = 1024)
     {
@@ -639,7 +639,8 @@ class file_handler
      * @param string $path 
      * @param string $extension 
      * @param string $accept 
-     * @return void 
+     * @param array $response_headers 
+     * @return bool|void 
      * @throws Exception 
      */
     private function check_image_accept(string $path, string $extension, string $accept, array $response_headers)
@@ -698,8 +699,16 @@ class file_handler
         // and if not we will instead try to redirect to the jpeg version of the file.
         if (('webp' === $extension) || ('avif' === $extension)) {
             if (
-                (false === str_contains($accept, 'image/webp')) &&
-                (true === str_contains($accept, 'image/jpeg'))
+                // If either webp or avif are not supported
+                ((false === str_contains($accept, 'image/webp')) || (false === str_contains($accept, 'image/avif'))) &&
+                (
+                    // and if jpeg is supported
+                    (true === str_contains($accept, 'image/jpeg')) ||
+                    // Client is askin for any available format
+                    (true === str_contains($accept, '*/*')) ||
+                    // Client is askin for any available image format
+                    (true === str_contains($accept, 'image/*'))
+                )
             ) {
 
                 $jpg_server_loc = substr($path, 0, strrpos($path, '.')) . '.jpg';
