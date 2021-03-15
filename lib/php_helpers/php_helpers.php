@@ -216,9 +216,25 @@ class php_helpers
      * Method to replace the first occurance of a string within another string
      * 
      */
-    function replace_first_str(string $search_str, string $replacement_str, string $src_str): string
+    public function replace_first_str(string $search_str, string $replacement_str, string $src_str): string
     {
         return (false !== ($pos = strpos($src_str, $search_str))) ? substr_replace($src_str, $replacement_str, $pos, strlen($search_str)) : $src_str;
+    }
+
+    /**
+     * Checks if a command exist. Works for both Windows and Linux systems
+     * @param mixed $command_name 
+     * @return bool 
+     */
+    public function command_exists($command_name)
+    {
+        // If on Windows, use "where", else use "command -v"
+        // Command -v is the recommended way to check if a command exists.
+        // This is also how it is done in project humanize:
+        //  https://github.com/beamtic/humanize/blob/master/helpers/is-command-available.sh
+        $command_name = escapeshellcmd($command_name);
+        $test_method = (false === stripos(PHP_OS, 'win')) ? 'command -v' : 'where';
+        return (null === shell_exec("$test_method $command_name")) ? false : true;
     }
     use \doorkeeper\lib\class_traits\no_set;
 }
