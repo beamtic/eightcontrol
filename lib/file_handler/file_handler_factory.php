@@ -1,4 +1,5 @@
 <?php
+
 /**
  *           Doorkeeper File Handler Factory
  *
@@ -6,6 +7,7 @@
  *
  *         @author Jacob (JacobSeated)
  */
+
 namespace doorkeeper\lib\file_handler;
 
 // IMPORTANT
@@ -33,9 +35,8 @@ class file_handler_factory
     public function build()
     {
         $superglobals = new \doorkeeper\lib\php_helpers\superglobals();
+        $helpers = new \doorkeeper\lib\php_helpers\php_helpers();
         $file_types = new \doorkeeper\lib\file_handler\file_types();
-
-        return new \doorkeeper\lib\file_handler\file_handler($superglobals, $file_types);
+        return new \doorkeeper\lib\file_handler\file_handler($superglobals, $helpers, $file_types);
     }
-
 }
