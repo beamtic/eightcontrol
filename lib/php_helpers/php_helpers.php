@@ -16,120 +16,6 @@ class php_helpers
 {
 
     /**
-     * Method to validate $input_arguments, and compare with $defined_arguments.
-     * The input arguments are valid if the function is not interrupted.
-     *
-     * @param array $defined_arguments is filled out by the developer on a per-function basis
-     * @param array $input_arguments contains the provided arguments which are checked against  "$default_argument_values_arr"
-     * @return array Returns an array on success exits with an error on failure.
-     * @throws Exception on failure.
-     */
-    public function handle_arguments($input_arguments, $defined_arguments)
-    {
-        trigger_error('PHP8.0 added support for named parameters, so this is no longer needed, and will be removed soon.', E_USER_DEPRECATED);
-        // Check if parameter is defined, and validate the type (if provided)
-        foreach ($input_arguments as $key => $value) {
-            if (!isset($defined_arguments["$key"])) {
-                throw new \Exception('Unknown function parameter: ' . $key);
-            }
-            // Validate the type, if defined. A type is always defined in an array.
-            // I.e.: array('required' => true, 'type' => 'object')
-            if (is_array($defined_arguments["$key"])) {
-                // Check if the developer remembered to define both "required" and "type"
-                if ((!isset($defined_arguments["$key"]['required'])) || (!isset($defined_arguments["$key"]['type']))) {
-                    throw new \Exception('Missing argument definition "required" or "type".');
-                    exit();
-                }
-                if (!$this->type_check($value, $defined_arguments["$key"]['type'])) {
-                    throw new \Exception(
-                        'Invalid input type for: "' . $key
-                            . '" Expected ' . $defined_arguments["$key"]['type'] . ', ' . gettype($value) . ' given.'
-                    );
-                }
-                // In case value was an array, make sure to add possible default elements.
-                if ((isset($defined_arguments["$key"]['default'])) && (is_array($defined_arguments["$key"]['default']))) {
-                    $input_arguments["$key"] += $defined_arguments["$key"]['default'];
-                }
-            }
-        }
-        // --------------------------------------------------
-        // Check for missing required parameters-------------
-        // The "required" setting only needs to be checked when the parameter is missing
-        // --------------------------------------------------
-        $missing_parms = array_diff_key($defined_arguments, $input_arguments);
-        foreach ($missing_parms as $key => $value) {
-            if (!is_array($defined_arguments["$key"])) {
-                // If no type validation
-                if (true === $defined_arguments["$key"]) {
-                    throw new \Exception('Missing required parameter: ' . $key);
-                }
-            } else {
-                // Check if the developer remembered to define both "required" and "type"
-                if ((!isset($defined_arguments["$key"]['required'])) || (!isset($defined_arguments["$key"]['type']))) {
-                    throw new \Exception('Missing argument definition "required" or "type".');
-                }
-                // If type was to be validated, check the "required" key
-                if (true === $defined_arguments["$key"]['required']) {
-                    throw new \Exception('Missing required parameter: ' . $key);
-                }
-                // Check if the parameter has a default value
-                if (isset($defined_arguments["$key"]['default'])) {
-                    $input_arguments["$key"] = $defined_arguments["$key"]['default'];
-                }
-            }
-        }
-        return $input_arguments;
-    }
-
-    /**
-     * Checks if a value is of the supplied type.
-     *
-     * @param mixed $input_value The value to validate.
-     * @param string $defined_type The type to check for.
-     * @return boolean true when input type matched defined type, false otherwise.
-     */
-    public function type_check($input_value, string $defined_type)
-    {
-        switch ($defined_type) {
-            case 'string':
-                return is_string($input_value);
-                break;
-            case 'str':
-                return is_string($input_value);
-                break;
-            case 'integeer':
-                return is_int($input_value);
-                break;
-            case 'int':
-                return is_int($input_value);
-                break;
-            case 'object':
-                return is_object($input_value);
-                break;
-            case 'array':
-                return is_array($input_value);
-                break;
-            case 'bool':
-                return is_bool($input_value);
-                break;
-            case 'resource':
-                return is_resource($input_value);
-                break;
-            case 'null':
-                return is_null($input_value);
-                break;
-                // Mixed type will allow anything
-            case 'mixed':
-                return true;
-                break;
-                // For unknown types we return false
-            default:
-                return false;
-                break;
-        }
-    }
-
-    /**
      * Reordering method to move an element in an array up or down.
      *
      *  @param array $array the array that must be worked on
@@ -179,6 +65,7 @@ class php_helpers
             }
         }
     }
+    
     /**
      * Checks if an array is associative. Return value of 'False' indicates a sequential array.
      * @param array $inptArry 
