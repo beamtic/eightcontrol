@@ -41,6 +41,9 @@ class file_handler
     ];
 
     private $http_user_agent = '';
+    private array $http_response_headers;
+
+    public $prevent_access_to_php_files = true;
 
     private $lock_max_time = 20; // File-lock maximum time in seconds.
 
@@ -53,26 +56,33 @@ class file_handler
         $this->ft = $file_types;
         $this->sg = $superglobals;
         $this->helpers = $php_helpers;
+        $this->http_response_headers['server'] = 'File Handler';
     }
 
     /**
-     * A standard method to delete both directories and files, if the permissions allow it, a directory will be deleted, including subdirectories.
+     * A standard method to delete both directories and files; if the permissions allow it a directory will be deleted, including subdirectories.
      * @param string $file_or_dir 
      * @return true 
      * @throws Exception 
      */
     public function simple_delete(string $file_or_dir)
     {
-        if (!is_writable($this->f_args['path'])) {
-            $e_msg = $this->error_messages["5"] . ' @' . $this->f_args['path'] . ' ';
+        if (false === file_exists($file_or_dir)) {
+            $e_msg = $this->error_messages["11"] . ' @' . $file_or_dir . ' ';
+            throw new Exception($e_msg, 11);
+        }
+        if (false === is_writable($file_or_dir)) {
+            $e_msg = $this->error_messages["5"] . ' @' . $file_or_dir . ' ';
             throw new Exception($e_msg, 5);
         }
         // If not dealing with a directory
-        if (!is_dir($file_or_dir)) {
+        if (false === is_dir($file_or_dir)) {
             // If unlink failed, possibly due to a race condition, return an error
             if (!unlink($file_or_dir)) {
                 $e_msg = $this->error_messages["8"] . ' @' . $file_or_dir . ' ';
                 throw new Exception($e_msg, 8);
+            } else {
+                return true;
             }
         }
 
@@ -424,9 +434,6 @@ class file_handler
             throw new Exception($e_msg, 11);
         }
 
-        // Variables
-        $response_headers = array();
-
         // Find out what the client accepts
         $accept = $this->sg->get_SERVER('HTTP_ACCEPT');
 
@@ -438,22 +445,33 @@ class file_handler
             $e_msg = $this->error_messages["13"] . ' @' . $path . ' ';
             throw new Exception($e_msg, 13);
         }
-        $response_headers = $this->ft->get_file_headers($extension) + $response_headers;
+
+        if ($this->prevent_access_to_php_files) {
+            if (strtolower($extension) === 'php') {
+                $e_msg = $this->error_messages["11"] . ' @' . $path . ' ';
+                throw new Exception($e_msg, 11);
+            }
+        }
+
+        $this->http_response_headers = $this->ft->get_file_headers($extension) + $this->http_response_headers;
+
+        // If the file is a text file, we should check if a compressed version exist
+        // Note. This assumes that the file has been compressed as either gzip, deflate or brotli
+        // .gz, .zz, .br
+        $path = $this->pick_compressed_text_file($path);
 
         // If a an image was requested, make sure it is supported by the client
         // if not, check if there is another type available, try to convert if not..
         // Note.. Do not try to convert .png images. They sometimes end up larger when converted to avif.
         if (
-            (str_contains($response_headers['content-type'], 'image/') &&
+            (str_contains($this->http_response_headers['content-type'], 'image/') &&
                 // Do not touch the following file types:
                 (
-                  ('png' !== $extension) &&
-                  ('svg' !== $extension) &&
-                  ('gif' !== $extension)
-                )
-            )
+                    ('png' !== $extension) &&
+                    ('svg' !== $extension) &&
+                    ('gif' !== $extension)))
         ) {
-            $this->check_image_accept($path, $extension, $accept, $response_headers);
+            $this->check_image_accept($path, $extension, $accept);
         }
 
         // Attempt to Open file for (r) reading (b=binary safe)
@@ -474,16 +492,16 @@ class file_handler
         // Send a 406 Not Acceptable response if the client does not support the content type
         if (
             // Mime Type of requested file
-            (!str_contains($accept, $response_headers['content-type']))  &&
+            (!str_contains($accept, $this->http_response_headers['content-type']))  &&
             // Any Mime Type (*/*)
             (!str_contains($accept, '*/*')) &&
             // If requested file is an image, and client claims to accept all image types
             (
-                (!str_contains($response_headers['content-type'], 'image/')) &&
+                (!str_contains($this->http_response_headers['content-type'], 'image/')) &&
                 (!str_contains($accept, 'image/*')))
 
         ) {
-            header('content-type: ' . $response_headers['content-type']);
+            header('content-type: ' . $this->http_response_headers['content-type']);
             http_response_code(406); // Not Acceptable
             exit();
         }
@@ -518,16 +536,16 @@ class file_handler
             http_response_code(206);
 
             // A "content-range" response header should only be sent if the "range" header was used in the request
-            $response_headers['content-range'] = 'bytes ' . $start . '-' . $end . '/' . $file_size;
+            $this->http_response_headers['content-range'] = 'bytes ' . $start . '-' . $end . '/' . $file_size;
         } else {
             // If the range header is not present, respond with a 200 code and start sending some content
             http_response_code(200);
         }
 
         // Tell the client we support range-requests
-        $response_headers['accept-ranges'] = 'bytes';
+        $this->http_response_headers['accept-ranges'] = 'bytes';
         // Set the content length to whatever remains
-        $response_headers['content-length'] = ($file_size - $start);
+        $this->http_response_headers['content-length'] = ($file_size - $start);
 
         // ---------------------
         // Send the file headers
@@ -537,8 +555,8 @@ class file_handler
         $if_modified_since = $this->sg->get_SERVER('HTTP_IF_MODIFIED_SINCE');
 
         if (($timestamp = filemtime($path)) !== false) {
-            $response_headers['last-modified'] = gmdate("D, d M Y H:i:s", $timestamp) . ' GMT';
-            if ((isset($if_modified_since)) && ($if_modified_since == $response_headers['last-modified'])) {
+            $this->http_response_headers['last-modified'] = gmdate("D, d M Y H:i:s", $timestamp) . ' GMT';
+            if ((isset($if_modified_since)) && ($if_modified_since == $this->http_response_headers['last-modified'])) {
                 http_response_code(304); // Not Modified
 
                 // The below uncommented lines was used while testing,
@@ -552,7 +570,7 @@ class file_handler
             }
         }
 
-        foreach ($response_headers as $header => $value) {
+        foreach ($this->http_response_headers as $header => $value) {
             header($header . ': ' . $value);
         }
 
@@ -580,6 +598,99 @@ class file_handler
         }
         fclose($fp);
         exit();
+    }
+
+    /**
+     * Method to pick best available compression in the following order: brotli, deflate, gzip
+     * @param string $path 
+     * @return string 
+     * @throws Exception 
+     */
+    private function pick_compressed_text_file(string $path): string
+    {
+        if ((
+            str_contains($this->http_response_headers['content-type'], 'text/'))
+        || (str_contains($this->http_response_headers['content-type'], 'application/xml'))
+        ) {
+            // Get request headers to decide content-encoding
+            if (false == $client_request_headers = getallheaders()) {
+                throw new Exception("getallheaders could not be called.");
+            }
+            // Convert to lower-case, because we can not trust all clients will use a specific case
+            $client_request_headers = array_change_key_case($client_request_headers, CASE_LOWER);
+            
+            $encodings_arr = [];
+            // If the client does not include an "accept-encoding" header just send the uncompressed file
+            if (!isset($client_request_headers['accept-encoding'])) {
+                return $path;
+            } else {
+                $encodings_arr = preg_split('/(\s*,*\s*)*,+(\s*,*\s*)*/', $client_request_headers['accept-encoding']);
+            }
+
+            // Only compress files that are larger than 4096 bytes
+            if (filesize($path) < 4096) {
+                return $path;
+            }
+
+            if (!file_exists($path . '.json')) {
+                $this->write_file($path . '.json', json_encode(
+                    [
+                        'filesize' => filesize($path) // Used to compare cache with live version of a file
+                    ],
+                    JSON_UNESCAPED_SLASHES
+                ));
+            }
+
+            // If the file has changed, recreate the compressed versions
+            // Note. This is done by comparing the recorded filesize in a .json with that of the current file
+            $c_file_stats = json_decode($this->read_file_lines($path . '.json'), true);
+            if ($c_file_stats['filesize'] !== filesize($path)) {
+                $this->simple_delete($path . '.json');
+                if (file_exists($path . '.br')) {
+                    $this->simple_delete($path . '.br');
+                }
+                if (file_exists($path . '.zz')) {
+                    $this->simple_delete($path . '.zz');
+                }
+                if (file_exists($path . '.gz')) {
+                    $this->simple_delete($path . '.gz');
+                }
+                $this->write_file($path . '.json', json_encode(['filesize' => filesize($path)], JSON_UNESCAPED_SLASHES));
+            }
+
+            if (in_array('br', $encodings_arr)) {
+                if (!file_exists($path . '.br')) {
+                    if ($this->helpers->command_exists('brotli')) {
+                        $command = 'brotli -q 11 ' . $path . ' -o ' . $path . '.br 2>&1';
+                        shell_exec(escapeshellcmd($command));
+                        $this->http_response_headers['content-encoding'] = 'br';
+                        return $path . '.br';
+                    }
+                } else {
+                    $this->http_response_headers['content-encoding'] = 'br';
+                    return $path . '.br';
+                }
+            }
+            if (in_array('deflate', $encodings_arr)) {
+                if (!file_exists($path . '.zz')) {
+                    $file_content = $this->read_file_lines($path);
+                    $compressed_or_uncompressed_body = gzdeflate($file_content, 9);
+                    $this->write_file($path . '.zz', $compressed_or_uncompressed_body);
+                }
+                $this->http_response_headers['content-encoding'] = 'deflate';
+                return $path . '.zz';
+            }
+            if (in_array('gzip', $encodings_arr)) {
+                if (!file_exists($path . '.gz')) {
+                    $file_content = $this->read_file_lines($path);
+                    $compressed_or_uncompressed_body = gzencode($file_content, 9);
+                    $this->write_file($path . '.gz', $compressed_or_uncompressed_body);
+                }
+                $this->http_response_headers['content-encoding'] = 'gzip';
+                return $path . '.gz';
+            }
+        }
+        return $path;
     }
 
     /**
@@ -660,12 +771,11 @@ class file_handler
      * Method to determine Image support via Accept HTTP header, and to convert existing files into more suitable formats
      * @param string $path 
      * @param string $extension 
-     * @param string $accept 
-     * @param array $response_headers 
+     * @param string $accept
      * @return bool 
      * @throws Exception 
      */
-    private function check_image_accept(string $path, string $extension, string $accept, array $response_headers)
+    private function check_image_accept(string $path, string $extension, string $accept)
     {
         // Sorry. I know this is getting complex.
         // We may decide to move some of these functions to a dedicated class at some point.
