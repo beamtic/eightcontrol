@@ -436,6 +436,7 @@ class file_handler
 
         // Find out what the client accepts
         $accept = $this->sg->get_SERVER('HTTP_ACCEPT');
+        $accept_encoding = $this->sg->get_SERVER('HTTP_ACCEPT_ENCODING');
 
         // -----------------------
         // Determine file type and client accept header
@@ -446,8 +447,11 @@ class file_handler
             throw new Exception($e_msg, 13);
         }
 
+        // Make sure the extension is in lower-case
+        $extension = strtolower($extension);
+
         if ($this->prevent_access_to_php_files) {
-            if (strtolower($extension) === 'php') {
+            if ($extension === 'php') {
                 $e_msg = $this->error_messages["11"] . ' @' . $path . ' ';
                 throw new Exception($e_msg, 11);
             }
@@ -458,9 +462,16 @@ class file_handler
         // If the file is a text file, we should check if a compressed version exist
         // Note. This assumes that the file has been compressed as either gzip, deflate or brotli
         // .gz, .zz, .br
-        $path = $this->pick_compressed_text_file($path);
+        if ((str_contains($this->http_response_headers['content-type'], 'text/'))
+            || ('xml' === $extension)
+            || ('svg' === $extension)
+            || ('rss' === $extension)
+            || ('atom' === $extension)
+        ) {
+            $path = $this->pick_compressed_text_file($path, $accept_encoding);
+        }
 
-        // If a an image was requested, make sure it is supported by the client
+        // If an image was requested, make sure it is supported by the client
         // if not, check if there is another type available, try to convert if not..
         // Note.. Do not try to convert .png images. They sometimes end up larger when converted to avif.
         if (
@@ -490,20 +501,26 @@ class file_handler
 
         // If Mime Type is not supported by the client
         // Send a 406 Not Acceptable response if the client does not support the content type
-        if (
-            // Mime Type of requested file
-            (!str_contains($accept, $this->http_response_headers['content-type']))  &&
-            // Any Mime Type (*/*)
-            (!str_contains($accept, '*/*')) &&
-            // If requested file is an image, and client claims to accept all image types
-            (
-                (!str_contains($this->http_response_headers['content-type'], 'image/')) &&
-                (!str_contains($accept, 'image/*')))
+        //     if(str_contains($path, 'some-broken-file.txt')) {
+        //       file_put_contents('/var/www/logs/log.txt', print_r(getallheaders(), true));
+        //     }
+        // If the accept header is not set, we assume the Browser wants the raw, unmodified, original 
+        if (!empty($accept)) {
+            if (
+                // Mime Type of requested file
+                (!str_contains($accept, $this->http_response_headers['content-type']))  &&
+                // Any Mime Type (*/*)
+                (!str_contains($accept, '*/*')) &&
+                // If requested file is an image, and client claims to accept all image types
+                (
+                    (!str_contains($this->http_response_headers['content-type'], 'image/')) &&
+                    (!str_contains($accept, 'image/*')))
 
-        ) {
-            header('content-type: ' . $this->http_response_headers['content-type']);
-            http_response_code(406); // Not Acceptable
-            exit();
+            ) {
+                header('content-type: ' . $this->http_response_headers['content-type']);
+                http_response_code(406); // Not Acceptable
+                exit();
+            }
         }
 
         // -----------------------
@@ -606,90 +623,84 @@ class file_handler
      * @return string 
      * @throws Exception 
      */
-    private function pick_compressed_text_file(string $path): string
+    private function pick_compressed_text_file(string $path, $accept_encoding): string
     {
-        if ((
-            str_contains($this->http_response_headers['content-type'], 'text/'))
-        || (str_contains($this->http_response_headers['content-type'], 'application/xml'))
-        ) {
-            // Get request headers to decide content-encoding
-            if (false == $client_request_headers = getallheaders()) {
-                throw new Exception("getallheaders could not be called.");
-            }
-            // Convert to lower-case, because we can not trust all clients will use a specific case
-            $client_request_headers = array_change_key_case($client_request_headers, CASE_LOWER);
-            
-            $encodings_arr = [];
-            // If the client does not include an "accept-encoding" header just send the uncompressed file
-            if (!isset($client_request_headers['accept-encoding'])) {
-                return $path;
-            } else {
-                $encodings_arr = preg_split('/(\s*,*\s*)*,+(\s*,*\s*)*/', $client_request_headers['accept-encoding']);
-            }
+        $encodings_arr = [];
+        // If the client does not include an "accept-encoding" header just send the uncompressed file
+        if (empty($accept_encoding)) {
+            return $path;
+        } else {
+            $encodings_arr = preg_split('/(\s*,*\s*)*,+(\s*,*\s*)*/', $accept_encoding);
+        }
 
-            // Only compress files that are larger than 4096 bytes
-            if (filesize($path) < 4096) {
-                return $path;
-            }
+        // Only compress files that are larger than 4096 bytes
+        if (filesize($path) < 4096) {
+            return $path;
+        }
 
-            if (!file_exists($path . '.json')) {
-                $this->write_file($path . '.json', json_encode(
-                    [
-                        'filesize' => filesize($path) // Used to compare cache with live version of a file
-                    ],
-                    JSON_UNESCAPED_SLASHES
-                ));
-            }
+        clearstatcache();
+        if (!file_exists($path . '.json')) {
+            $this->write_file($path . '.json', json_encode(
+                [
+                    'filemtime' => filemtime($path) // Used to compare cache with live version of a file
+                ],
+                JSON_UNESCAPED_SLASHES
+            ));
+        }
 
-            // If the file has changed, recreate the compressed versions
-            // Note. This is done by comparing the recorded filesize in a .json with that of the current file
-            $c_file_stats = json_decode($this->read_file_lines($path . '.json'), true);
-            if ($c_file_stats['filesize'] !== filesize($path)) {
-                $this->simple_delete($path . '.json');
-                if (file_exists($path . '.br')) {
-                    $this->simple_delete($path . '.br');
-                }
-                if (file_exists($path . '.zz')) {
-                    $this->simple_delete($path . '.zz');
-                }
-                if (file_exists($path . '.gz')) {
-                    $this->simple_delete($path . '.gz');
-                }
-                $this->write_file($path . '.json', json_encode(['filesize' => filesize($path)], JSON_UNESCAPED_SLASHES));
+        // If the file has changed, recreate the compressed versions
+        // Note. This is done by comparing the recorded filesize in a .json with that of the current file
+        $c_file_stats = json_decode($this->read_file_lines($path . '.json'), true);
+        // clearstatcache() is needed in order to update filemtime
+        clearstatcache();
+        if ((!isset($c_file_stats['filemtime'])) || ($c_file_stats['filemtime'] !== filemtime($path))) {
+            $this->simple_delete($path . '.json');
+            if (file_exists($path . '.br')) {
+                $this->simple_delete($path . '.br');
             }
+            if (file_exists($path . '.zz')) {
+                $this->simple_delete($path . '.zz');
+            }
+            if (file_exists($path . '.gz')) {
+                $this->simple_delete($path . '.gz');
+            }
+            $this->write_file($path . '.json', json_encode(['filemtime' => filemtime($path)], JSON_UNESCAPED_SLASHES));
+        }
 
-            if (in_array('br', $encodings_arr)) {
-                if (!file_exists($path . '.br')) {
-                    if ($this->helpers->command_exists('brotli')) {
-                        $command = 'brotli -q 11 ' . $path . ' -o ' . $path . '.br 2>&1';
-                        shell_exec(escapeshellcmd($command));
-                        $this->http_response_headers['content-encoding'] = 'br';
-                        return $path . '.br';
-                    }
-                } else {
+        if (in_array('br', $encodings_arr)) {
+            if (!file_exists($path . '.br')) {
+                if ($this->helpers->command_exists('brotli')) {
+                    $command = 'brotli -q 11 ' . $path . ' -o ' . $path . '.br 2>&1';
+                    shell_exec(escapeshellcmd($command));
                     $this->http_response_headers['content-encoding'] = 'br';
                     return $path . '.br';
                 }
-            }
-            if (in_array('deflate', $encodings_arr)) {
-                if (!file_exists($path . '.zz')) {
-                    $file_content = $this->read_file_lines($path);
-                    $compressed_or_uncompressed_body = gzdeflate($file_content, 9);
-                    $this->write_file($path . '.zz', $compressed_or_uncompressed_body);
-                }
-                $this->http_response_headers['content-encoding'] = 'deflate';
-                return $path . '.zz';
-            }
-            if (in_array('gzip', $encodings_arr)) {
-                if (!file_exists($path . '.gz')) {
-                    $file_content = $this->read_file_lines($path);
-                    $compressed_or_uncompressed_body = gzencode($file_content, 9);
-                    $this->write_file($path . '.gz', $compressed_or_uncompressed_body);
-                }
-                $this->http_response_headers['content-encoding'] = 'gzip';
-                return $path . '.gz';
+            } else {
+                $this->http_response_headers['content-encoding'] = 'br';
+                return $path . '.br';
             }
         }
+        if (in_array('deflate', $encodings_arr)) {
+            if (!file_exists($path . '.zz')) {
+                $file_content = $this->read_file_lines($path);
+                $compressed_or_uncompressed_body = gzdeflate($file_content, 9);
+                $this->write_file($path . '.zz', $compressed_or_uncompressed_body);
+            }
+            $this->http_response_headers['content-encoding'] = 'deflate';
+            return $path . '.zz';
+        }
+        if (in_array('gzip', $encodings_arr)) {
+            if (!file_exists($path . '.gz')) {
+                $file_content = $this->read_file_lines($path);
+                $compressed_or_uncompressed_body = gzencode($file_content, 9);
+                $this->write_file($path . '.gz', $compressed_or_uncompressed_body);
+            }
+            $this->http_response_headers['content-encoding'] = 'gzip';
+            return $path . '.gz';
+        }
+        // If the client does not report that it supports any of above encodings, send the original unmodified
+        // Some clients might specifically ask for "identity", which is the same as unmodified source, so noo need
+        // to handle "identity" explicitly 
         return $path;
     }
 
