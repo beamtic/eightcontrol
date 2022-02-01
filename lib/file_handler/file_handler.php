@@ -14,13 +14,14 @@
 
 namespace doorkeeper\lib\file_handler;
 
+use JetBrains\PhpStorm\NoReturn;
 use doorkeeper\lib\php_helpers\{superglobals, php_helpers};
 use Exception;
 
 class file_handler
 {
 
-    private $error_messages = [
+    private array $error_messages = [
         1 => 'Failed to open file.',
         2 => 'Failed to create or write file.',
         3 => 'Failed to create directory.',
@@ -40,18 +41,18 @@ class file_handler
         17 => 'Unable to open remote resource.',
     ];
 
-    private $http_user_agent = '';
+    private string $http_user_agent = '';
     private array $http_response_headers;
 
-    public $prevent_access_to_php_files = true;
+    public bool $prevent_access_to_php_files = true;
 
-    private $lock_max_time = 20; // File-lock maximum time in seconds.
+    private int $lock_max_time = 20; // File-lock maximum time in seconds.
 
     private $ft; // The $file_types object, used in http_stream_file()
     private $sg; // Superglobals object
     private $helpers; // PHP Helper functions
 
-    public function __construct(superglobals $superglobals = null, php_helpers $php_helpers, file_types $file_types = null)
+    public function __construct(php_helpers $php_helpers, superglobals $superglobals = null, file_types $file_types = null)
     {
         $this->ft = $file_types;
         $this->sg = $superglobals;
@@ -65,7 +66,7 @@ class file_handler
      * @return true 
      * @throws Exception 
      */
-    public function simple_delete(string $file_or_dir)
+    public function simple_delete(string $file_or_dir) : bool
     {
         if (false === file_exists($file_or_dir)) {
             $e_msg = $this->error_messages["11"] . ' @' . $file_or_dir . ' ';
@@ -122,7 +123,7 @@ class file_handler
      * @return true 
      * @throws Exception 
      */
-    public function delete_files(string $directory, string $pattern)
+    public function delete_files(string $directory, string $pattern) : bool
     {
         // Remove slashes at end if needed
         $directory = rtrim($directory, '/');
@@ -147,10 +148,10 @@ class file_handler
      * @param int $start_line 
      * @param int $max_line_length 
      * @param int|null $lines_to_read 
-     * @return string|false 
+     * @return string
      * @throws Exception 
      */
-    public function read_file_lines(string $path, int $start_line = 0, int $max_line_length = 4096, int $lines_to_read = null)
+    public function read_file_lines(string $path, int $start_line = 0, int $max_line_length = 4096, int $lines_to_read = null): string
     {
         if (false === (file_exists($path))) {
             $e_msg = $this->error_messages["11"] . ' @' . $path . ' ';
@@ -193,9 +194,11 @@ class file_handler
             while ($i < $lines_to_read) {
                 if ($lc > $start_line) {
                     // fgets (read a single line)
-                    if (($file_content .= fgets($fp, $max_line_length)) === false) {
+                    if (($line = fgets($fp, $max_line_length)) === false) {
                         $e_msg = $this->error_messages["14"] . ' @' . $path . ' ';
                         throw new Exception($e_msg, 14);
+                    } else {
+                        $file_content = $line;
                     }
                 } else {
                     if (fgets($fp, $max_line_length) === false) {
@@ -208,7 +211,7 @@ class file_handler
             }
         }
         // If End Of File was not reached (unexpected at this point)...
-        // Note. This chould happen if something interrupts the read process.
+        // Note. This could happen if something interrupts the read process.
         // Note. 2. If "lines_to_read" is used, EOF (feof) is not relevant, since
         //          it will probably never be reached anyway.
         if ((!feof($fp)) && ($lines_to_read === false)) {
@@ -222,16 +225,16 @@ class file_handler
 
     /**
      * Method to count the lines in files, useful if you want to read a file x lines at a time
-     * within a loop. Also useful to count the lines in your source code. Returns the line count as an int, or an array of int's if $search_string is used.
+     * within a loop. Also, useful to count the lines in your source code. Returns the line count as an int, or an array of int's if $search_string is used.
      * @param string $path 
      * @param int $max_line_length 
      * @param string|null $search_string 
      * @return array|int 
      * @throws Exception 
      */
-    public function count_lines(string $path, int $max_line_length = 4096, string $search_string = null)
+    public function count_lines(string $path, int $max_line_length = 4096, string $search_string = null): int|array
     {
-        // It may be nessecery to count the lines in very large files, so we can read the file, say, 100 lines at a time.
+        // It may be necessary to count the lines in very large files, so we can read the file, say, 100 lines at a time.
         // Note. Any file-lock should be obtained outside this method, to prevent writing to a file while we are counting the lines in it
 
         // Attempt to open the file for reading
@@ -260,7 +263,7 @@ class file_handler
         }
 
         // If End Of File was not reached (unexpected at this point)...
-        // Note. This chould happen if something interrupts the read process.
+        // Note. This could happen if something interrupts the read process.
         if ((!feof($fp))) {
             fclose($fp);
             $e_msg = $this->error_messages["4"] . ' @' . $path . ' ';
@@ -273,7 +276,7 @@ class file_handler
     }
 
     /**
-     * Method to write to the filesystem. A file lock should automatically be obtained, ideal in concurrency siturations.
+     * Method to write to the filesystem. A file lock should automatically be obtained, ideal in concurrency situations.
      * @param string $path 
      * @param string $content 
      * @param string $mode 
@@ -281,7 +284,7 @@ class file_handler
      * @return true 
      * @throws Exception 
      */
-    public function write_file(string $path, string $content = '', string $mode = 'w', int $permissions = 0775)
+    public function write_file(string $path, string $content = '', string $mode = 'w', int $permissions = 0775): bool
     {
         // Attempt to open the file
         if (($fp = @fopen($path, $mode)) === false) {
@@ -313,7 +316,7 @@ class file_handler
      * @return true 
      * @throws Exception 
      */
-    public function create_directory(string $path, string $base_path = null, int $permissions = 0775)
+    public function create_directory(string $path, string $base_path = null, int $permissions = 0775): bool
     {
         // If base_path is defined, subtract base_path from the path array
         // To get a list of directories we need to make
@@ -349,9 +352,9 @@ class file_handler
         }
 
 
-        // Finally attempt to create the directories with the desired permissions
+        // Finally, attempt to create the directories with the desired permissions
         foreach ($dirs_to_make_arr as $dir) {
-            // Note. Error supression is on purpose,
+            // Note. Error suppression is on purpose,
             // since we only care if the action failed or not at this point.
             // If the action failed, it will most likely be due to permissions.
             // Subdirectories will be created recursively if present.
@@ -377,7 +380,7 @@ class file_handler
      * @return true 
      * @throws Exception 
      */
-    public function obtain_lock($fp, string $path, $LOCK_SH = false)
+    public function obtain_lock($fp, string $path, $LOCK_SH = false): bool
     {
         // Add the right bitmask for use with flock
         if ($LOCK_SH === true) {
@@ -406,7 +409,7 @@ class file_handler
     /**
      * Method to scan a directory and return the result as an array.
      */
-    public function scan_dir(string $path_to_dir)
+    public function scan_dir(string $path_to_dir): bool|array
     {
         $items_arr = scandir($path_to_dir);
         // Make sure to remove "." and ".." since they are not needed.
@@ -417,7 +420,7 @@ class file_handler
      * Method to "stream" a file over HTTP in response to a client request. HTTP "range" requests are supported, making it possible to stream audio and video files from PHP.
      * @param string $path 
      * @param int $chunk_size 
-     * @return exit 
+     * @return void
      * @throws Exception 
      */
     public function http_stream_file(string $path, int $chunk_size = 8192)
@@ -472,8 +475,8 @@ class file_handler
         }
 
         // If an image was requested, make sure it is supported by the client
-        // if not, check if there is another type available, try to convert if not..
-        // Note.. Do not try to convert .png images. They sometimes end up larger when converted to avif.
+        // if not, check if there is another type available, try to convert if not.
+        // Note. Do not try to convert .png images. They sometimes end up larger when converted to avif.
         if (
             (str_contains($this->http_response_headers['content-type'], 'image/') &&
                 // Do not touch the following file types:
@@ -541,7 +544,7 @@ class file_handler
             }
 
             // Make sure we are not out of range
-            if (($start > $end) || ($start > $file_size) || ($end > $file_size) || ($end <= $start)) {
+            if (($start > $file_size) || ($end > $file_size) || ($end <= $start)) {
                 http_response_code(416);
                 exit();
             }
@@ -604,12 +607,12 @@ class file_handler
             }
 
             // WARNING:
-            // * In regards to this loop and calling fread inside a loop. *
-            // The error supression of fread is intentional.
-            // Without the supression we risk filling up all available disk space
+            // * In regard to this loop and calling fread inside a loop. *
+            // The error suppression of fread is intentional.
+            // Without the suppression we risk filling up all available disk space
             // with error logging on some servers - in mere seconds!!
-            // While the specific obtain_lock() error should be fixed, the supression
-            // was left in place just to be safe..
+            // While the specific obtain_lock() error should be fixed, the suppression
+            // was left in place just to be safe.
             echo @fread($fp, $buffer);
             flush();
         }
@@ -618,14 +621,14 @@ class file_handler
     }
 
     /**
-     * Method to pick best available compression in the following order: brotli, deflate, gzip
-     * @param string $path 
-     * @return string 
-     * @throws Exception 
+     * Method to pick the best available compression in the following order: brotli, deflate, gzip
+     * @param string $path
+     * @param $accept_encoding
+     * @return string
+     * @throws Exception
      */
     private function pick_compressed_text_file(string $path, $accept_encoding): string
     {
-        $encodings_arr = [];
         // If the client does not include an "accept-encoding" header just send the uncompressed file
         if (empty($accept_encoding)) {
             return $path;
@@ -715,7 +718,7 @@ class file_handler
      * @return true 
      * @throws Exception 
      */
-    public function download_to_file(string $url, string $output_file_path, string $method = 'GET', array $post_data = null, array $request_headers = [], int $max_line_length = 1024)
+    public function download_to_file(string $url, string $output_file_path, string $method = 'GET', array $post_data = null, array $request_headers = [], int $max_line_length = 1024): bool
     {
         $request_headers['user-agent'] = $this->http_user_agent;
         foreach ($request_headers as $key => $value) {
@@ -786,7 +789,7 @@ class file_handler
      * @return bool 
      * @throws Exception 
      */
-    private function check_image_accept(string $path, string $extension, string $accept)
+    private function check_image_accept(string $path, string $extension, string $accept): bool
     {
         // Sorry. I know this is getting complex.
         // We may decide to move some of these functions to a dedicated class at some point.
@@ -795,15 +798,15 @@ class file_handler
         // In fact. LinkedIn's crawler does not even appear to request
         // images with unsupported file extensions
 
-        // Note. The gd conversion method is preffered, since it is more broadly supported.
+        // Note. The gd conversion method is preferred, since it is more broadly supported.
         //       Once gd is able to convert to avif, use gd instead of the 'convert' command.
 
         $full_uri_clean = $this->sg->get_SERVER('full_uri_clean');
 
         // If the client specifically claims to support avif, we should redirect to the avif version.
         if (true === str_contains($accept, 'image/avif')) {
-            // The avif format is relativly new, and currently only supported by very few clients.
-            // avif, so far, provides best compression, so of course we want to support it.
+            // The avif format is relatively new, and currently only supported by very few clients.
+            // avif, so far, provides the best compression, so of course we want to support it.
             if ('avif' === $extension) {
                 return true;
             }
@@ -820,7 +823,7 @@ class file_handler
             // First check if the convert command is available
             if ($this->helpers->command_exists('convert')) {
                 // We are going to use the 'convert' command for this
-                // and, unfurtunately, this probably only exists on Linux systems..
+                // and, unfortunately, this probably only exists on Linux systems.
 
                 // Attempt to convert the file
                 shell_exec('convert ' . escapeshellcmd($path . ' -quality 50% ' . $avif_server_loc));
@@ -912,9 +915,6 @@ class file_handler
                     // Silently serve the original file as-is
                     return false;
                 }
-
-                // This point should not be reached
-                return false;
             }
         }
         // No ideal available, serving requested file as-is
@@ -924,11 +924,11 @@ class file_handler
     /**
      * Redirects to a more suitable file format and exits()
      * @param string $location 
-     * @return exit 
+     * @return void
      */
-    private function redirect_to_suitable(string $location)
+    #[NoReturn] private function redirect_to_suitable(string $location)
     {
-        // Redirect the user to the preffered image format
+        // Redirect the user to the preferred image format
         header("location: $location", false, 307);
         header('content-length: 0'); // No body length
         header('content-type:'); // Nullify the content-type if needed
