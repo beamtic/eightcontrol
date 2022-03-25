@@ -1,0 +1,10 @@
+{
+    "autoload": {
+        "psr-4": {"eightcontrol\\": "eightcontrol/php/"}
+    },
+  "require": {
+    "ext-json": "*",
+    "ext-zlib": "*",
+    "ext-gd": "*"
+  }
+}
