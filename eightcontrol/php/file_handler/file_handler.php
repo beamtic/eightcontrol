@@ -31,7 +31,7 @@ class file_handler
         8 => 'Unable to unlink file (possible race condition).',
         9 => 'File or directory already exists.',
         10 => 'Unable to remove directory.',
-        11 => 'The file did not exist.',
+        11 => 'The file or directory did not exist.',
         12 => 'Unexpected filesize() fail.',
         13 => 'The file path had no file extension.',
         14 => 'Failed to read line in file. This can happen if the process was interrupted.',
@@ -65,7 +65,7 @@ class file_handler
      * @return true 
      * @throws Exception 
      */
-    public function simple_delete(string $file_or_dir) : bool
+    public function simple_delete(string $file_or_dir): bool
     {
         if (false === file_exists($file_or_dir)) {
             $e_msg = $this->error_messages["11"] . ' @' . $file_or_dir . ' ';
@@ -122,7 +122,7 @@ class file_handler
      * @return true 
      * @throws Exception 
      */
-    public function delete_files(string $directory, string $pattern) : bool
+    public function delete_files(string $directory, string $pattern): bool
     {
         // Remove slashes at end if needed
         $directory = rtrim($directory, '/');
@@ -290,7 +290,7 @@ class file_handler
             $e_msg = $this->error_messages["1"] . ' @' . $path . ' ';
             throw new Exception($e_msg, 1);
         }
-        
+
         // Attempt to obtain_lock
         $this->obtain_lock($fp, $path);
 
@@ -316,47 +316,57 @@ class file_handler
      */
     public function create_directory(string $path, string $base_path = null, int $permissions = 0775): bool
     {
-        // If base_path is defined, subtract base_path from the path array
-        // To get a list of directories we need to make
-        // Note. This step is important in order to correctly set permissions recursively on the directories
         if (null !== $base_path) {
-            // Find out how many directories should be created
-            $dirs_from_base_arr = array_diff_key(
-                // Create an array containing directories found in the path and base_path, flip them, and remember the difference
-                array_flip(explode('/', trim($path, '/'))),
-                array_flip(explode('/', trim($base_path, '/')))
-            );
-            $dirs_to_make_arr = array();
+            trigger_error('The $base_path parameter is deprecated and will be removed in a future update. It no longer has any effect.', E_USER_DEPRECATED);
+        }
+        if (file_exists($path)) {
+            // Return true if the path already exists. This is a nice optimization.
+            return true;
+        }
+        // Make sure we use forward slashes
+        // Note. Also works on Windows, in fact, you could even mix backslash with forward, although that's a bit stupid
+        $path = rtrim(str_replace('\\', '/', $path), '/');
+        // If the supplied path is absolute, remember the fact and re-add it later when needed
+        $starts_with = (preg_match('/^([a-zA-Z]{1}:[\/\\\]{1}|\/)/', $path, $matches)) ? $matches[1] : '';
 
-            // Add the base_path to the $dir_path string
-            $dir_path = $base_path;
-            foreach ($dirs_from_base_arr as $dir => $value) {
-                $dir_path .= $dir . '/';
-                // If the $dir_path did not exist, queue it for creation
-                if (!file_exists($dir_path)) {
-                    $dirs_to_make_arr[] = $dir_path;
-                }
+        $deduced_dirs = explode('/', $path);
+
+        if ('' !== $starts_with) {
+            // The first element is of no interest if the path is absolute, so remove it
+            $deduced_dirs = explode('/', $path);
+            array_shift($deduced_dirs);
+            // Re-add the beginning of path string, the "absolute" part. E.g. "c:/" or "/"
+            $current_path = $starts_with;
+        }
+
+        // Build the $dirs_to_be_made array. E.g.:
+        //   /first/
+        //   /first/second/
+        //   /first/second/third/
+        $i = 0;
+        $dirs_to_be_made = [];
+        foreach ($deduced_dirs as $dir_name) {
+            $current_path .= $dir_name . '/';
+            if (!file_exists($current_path)) {
+                $dirs_to_be_made["$i"] = $current_path;
             }
-        } else {
-            // If base_path was not defined, we compromise by
-            // only setting permissions on the last directory found in the path—
-            // this will often be sufficient anyway!
-            $dirs_to_make_arr[] = $path;
+            ++$i;
         }
 
         // Check if there's anything to create
-        if (count($dirs_to_make_arr) < 1) {
-            $e_msg = $this->error_messages["9"] . ' @' . $path . ' ';
-            throw new Exception($e_msg, 9);
+        if (count($dirs_to_be_made) < 1) {
+            // If there is nothing to create, return true
+            return true;
         }
 
 
         // Finally, attempt to create the directories with the desired permissions
-        foreach ($dirs_to_make_arr as $dir) {
+        foreach ($dirs_to_be_made as $dir) {
             // Note. Error suppression is on purpose,
             // since we only care if the action failed or not at this point.
             // If the action failed, it will most likely be due to permissions.
             // Subdirectories will be created recursively if present.
+            $dir = rtrim($dir, '/');
             if (!@mkdir($dir, $permissions, false)) { // Bug? Perform chmod after to try to apply correct permissions!
                 $e_msg = $this->error_messages["3"] . ' @' . $path . ' ';
                 throw new Exception($e_msg, 3);
@@ -407,12 +417,91 @@ class file_handler
 
     /**
      * Method to scan a directory and return the result as an array.
+     * @param string $path_to_dir 
+     * @param array $files_to_ignore 
+     * @return array|false 
+     * @throws Exception 
      */
-    public function scan_dir(string $path_to_dir)
+    public function scan_dir(string $path_to_dir, array &$files_to_ignore = null)
     {
-        $items_arr = scandir($path_to_dir);
-        // Make sure to remove "." and ".." since they are not needed.
-        return is_array($items_arr) ? array_diff($items_arr, [".", ".."]) : false;
+        if (false === ($items_arr = scandir($path_to_dir))) {
+            // The file did not exist, handle the error elsewhere
+            $e_msg = $this->error_messages["11"] . ' @' . $path_to_dir . ' ';
+            throw new Exception($e_msg, 11);
+        }
+
+        $items_arr = array_diff($items_arr, [".", ".."]);
+
+        if (null === $files_to_ignore) {
+            // Make sure to remove "." and ".." since they are not needed.
+            return $items_arr;
+        }
+
+        foreach ($files_to_ignore as $ignored_item) {
+            if (($key = array_search($ignored_item, $items_arr)) !== false) {
+                unset($items_arr[$key]);
+            }
+        }
+
+        return array_values($items_arr);
+    }
+
+    /**
+     * Recursivly scan a base directory, returning an array of all items contained within.
+     * @param string $path_to_dir 
+     * @return array 
+     * @throws Exception 
+     */
+    public function scan_dir_recursive(string $path_to_dir, array &$files_to_ignore = null): array
+    {
+        $base_items = $this->scan_dir($path_to_dir, $files_to_ignore);
+
+        $all_items = [];
+        foreach ($base_items as $item) {
+            $item_path = $path_to_dir . '/' . $item;
+            if (is_dir($item_path)) {
+                // Include the directory before contents note:
+                //   Obviously you can not move files to a directory that does not exist
+                //   So, this step is important to allow for easily calling mkdir in a loop
+                //   on the resulting array, and subsequently copying contents.
+                //   Otherwise users would have to re-parse the array to figure out the path structure and re-create
+                //   it in a new location.
+                $all_items[] = $item_path;
+
+                // Now we scan the subdir's content
+                $subdir_content = $this->scan_dir_recursive($item_path, $files_to_ignore);
+                // This method is faster than array_append
+                // Also note: "+" will not actually "merge" two arrays,
+                // but elements will be overwritten, which we do not want,
+                // so either this or array_merge
+                foreach ($subdir_content as $sub_item) {
+                    $all_items[] = $sub_item;
+                }
+                // Alternative way to do the same thing
+                // $all_items = array_merge($all_items, $this->scan_dir_recursive($item_path, $files_to_ignore));
+            } else {
+              $all_items[] = $item_path;
+            }
+        }
+        return $all_items;
+    }
+
+    /**
+     * Return the dirs in a directory as an array
+     * @param string $path_to_dir 
+     * @return array 
+     */
+    public function get_dirs_in_dir(string $path_to_dir): array
+    {
+        $items = $this->scan_dir($path_to_dir);
+
+        foreach ($items as $item) {
+            if (is_dir($item)) {
+                $all_directories[] = $item;
+            }
+        }
+
+        return $all_directories;
     }
 
     /**
@@ -933,5 +1022,4 @@ class file_handler
         header('content-type:'); // Nullify the content-type if needed
         exit();
     }
-
 }
